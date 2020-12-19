@@ -1,0 +1,7 @@
+.idea/
+.mypy_cache/
+*.egg-info/
+__pycache__/
+dist/
+venv/
+aiven_mysql_migrate/version.py

@@ -1,0 +1,108 @@
+version: '3.4'
+
+services:
+
+  test:
+    build: .
+    depends_on:
+      - mysql57-src-1
+      - mysql80-src-2
+      - mysql80-src-3
+      - mysql80-dst-1
+      - mysql80-dst-2
+      - mysql80-dst-3
+
+  mysql57-src-1:
+    image: mysql:5.7
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: test
+    command:
+      - --server-id=1
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --master-info-repository=TABLE
+      - --relay-log-info-repository=TABLE
+      - --binlog-checksum=NONE
+      - --log-slave-updates=ON
+      - --log-bin=binlog
+      - --binlog-format=ROW
+
+  mysql80-src-2:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: test
+    command:
+      - --server-id=1
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --master-info-repository=TABLE
+      - --relay-log-info-repository=TABLE
+      - --binlog-checksum=NONE
+      - --log-slave-updates=ON
+      - --log-bin=binlog
+      - --binlog-format=ROW
+
+  mysql80-src-3:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: test
+    command:
+      - --server-id=1
+      - --gtid-mode=OFF
+      - --master-info-repository=TABLE
+      - --relay-log-info-repository=TABLE
+      - --binlog-checksum=NONE
+      - --log-slave-updates=ON
+      - --log-bin=binlog
+      - --binlog-format=ROW
+
+  mysql80-dst-1:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: test
+    command:
+      - --server-id=2
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --master-info-repository=TABLE
+      - --relay-log-info-repository=TABLE
+      - --binlog-checksum=NONE
+      - --log-slave-updates=ON
+      - --log-bin=binlog
+      - --binlog-format=ROW
+
+  mysql80-dst-2:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: test
+    command:
+      - --server-id=2
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --master-info-repository=TABLE
+      - --relay-log-info-repository=TABLE
+      - --binlog-checksum=NONE
+      - --log-slave-updates=ON
+      - --log-bin=binlog
+      - --binlog-format=ROW
+
+  mysql80-dst-3:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: test
+    command:
+      - --server-id=2
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --master-info-repository=TABLE
+      - --relay-log-info-repository=TABLE
+      - --binlog-checksum=NONE
+      - --log-slave-updates=ON
+      - --log-bin=binlog
+      - --binlog-format=ROW
