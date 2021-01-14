@@ -43,6 +43,10 @@ class ServerIdsOverlappingException(ReplicationNotAvailableException):
     pass
 
 
+class UnsupportedBinLogFormatException(ReplicationNotAvailableException):
+    pass
+
+
 class MySQLDumpException(Exception):
     pass
 
