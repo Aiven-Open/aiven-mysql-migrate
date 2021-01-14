@@ -3,8 +3,8 @@ from aiven_mysql_migrate import config
 from aiven_mysql_migrate.exceptions import (
     EndpointConnectionException, GTIDModeDisabledException, MissingReplicationGrants, MySQLDumpException,
     MySQLImportException, NothingToMigrateException, ReplicaSetupException, ReplicationNotAvailableException,
-    ServerIdsOverlappingException, TooManyDatabasesException, UnsupportedMySQLEngineException,
-    UnsupportedMySQLVersionException
+    ServerIdsOverlappingException, TooManyDatabasesException, UnsupportedBinLogFormatException,
+    UnsupportedMySQLEngineException, UnsupportedMySQLVersionException
 )
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, PrivilegeCheckUser, select_global_var
 from concurrent import futures
@@ -174,6 +174,12 @@ class MySQLMigration:
                 f"Too many databases to migrate: {len(self.databases)} (> {config.MYSQL_MAX_DATABASES})"
             )
 
+    def _check_bin_log_format(self):
+        with self.source.cur() as cur:
+            row_format = select_global_var(cur, "binlog_format")
+            if row_format.upper() != "ROW":
+                raise UnsupportedBinLogFormatException(f"Unsupported binary log format: {row_format}, only ROW is supported")
+
     def run_checks(self) -> MySQLMigrateMethod:
         """Raises an exception if one of the the pre-checks fails, otherwise a method to be used for migration"""
         migration_method = MySQLMigrateMethod.replication
@@ -200,6 +206,7 @@ class MySQLMigration:
             self._check_versions_replication_support()
             self._check_engine_support()
             self._check_server_id_overlapping()
+            self._check_bin_log_format()
         except ReplicationNotAvailableException as e:
             LOGGER.warning("Replication is not possible. Falling back to dump method, details: %s", e)
             migration_method = MySQLMigrateMethod.dump
