@@ -13,6 +13,7 @@ DEFAULT_MYSQL_PORT = 3306
 
 ROUTINE_DEFINER_RE = re.compile("^CREATE DEFINER *= *(`.*?`@`.*?`) +(.*$)")
 IMPORT_DEFINER_RE = re.compile(r"^/\*!50013 DEFINER *= *`.*?`@`.*?` +SQL SECURITY DEFINER \*/$")
+EXTRA_DEFINER_RE = re.compile(r"^(/\*!(?:50003|50106) CREATE *\*/ *)(/\*!(?:50017|50117) +DEFINER *= *`.*?`@`.*?`\*/)(.*$)")
 
 GTID_START_RE = re.compile(r"^SET +@@GLOBAL.GTID_PURGED *= */\*!80000 +'\+'\*/ *'([^']*)")
 GTID_END_RE = re.compile(r"^(.*?)' *;")
@@ -160,6 +161,9 @@ class MySQLDumpProcessor:
         """Remove security definers from routines and dump meta, so that the default definer is used"""
         if IMPORT_DEFINER_RE.match(line):
             return ""
+
+        if EXTRA_DEFINER_RE.match(line):
+            return EXTRA_DEFINER_RE.sub("\\1\\3", line)
 
         return ROUTINE_DEFINER_RE.sub("CREATE \\2", line)
 
