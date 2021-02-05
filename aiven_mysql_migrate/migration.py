@@ -286,11 +286,6 @@ class MySQLMigration:
         assert self.mysqldump_proc.stderr
         assert self.mysql_proc.stdin
 
-        # If sql_require_primary_key is ON globally - it's not possible to import tables without a primary key
-        with self.target.cur() as cur:
-            if select_global_var(cur, "sql_require_primary_key") == 1:
-                self.mysql_proc.stdin.write("SET SESSION sql_require_primary_key = 0;")
-
         def _reader_stdout():
             for line in self.mysqldump_proc.stdout:
                 line = dump_processor.process_line(line.rstrip())
@@ -344,8 +339,6 @@ class MySQLMigration:
             )
             if LooseVersion(self.target.version) >= LooseVersion("8.0.19"):
                 query += ", REQUIRE_ROW_FORMAT = 1"
-            if LooseVersion(self.target.version) >= LooseVersion("8.0.20"):
-                query += ", REQUIRE_TABLE_PRIMARY_KEY_CHECK = OFF"
 
             query_params = [self.source.hostname, self.source.port, self.source.username, self.source.password]
 
