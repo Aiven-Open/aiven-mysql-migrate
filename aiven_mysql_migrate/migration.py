@@ -8,6 +8,7 @@ from aiven_mysql_migrate.exceptions import (
 )
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, PrivilegeCheckUser, select_global_var
 from concurrent import futures
+from dataclasses import dataclass
 from distutils.version import LooseVersion
 from subprocess import Popen
 from typing import List, Optional
@@ -29,6 +30,12 @@ LOGGER = logging.getLogger(__name__)
 class MySQLMigrateMethod(str, enum.Enum):
     dump = "dump"
     replication = "replication"
+
+
+@dataclass
+class MySQLMigrateMethodValidation:
+    method: MySQLMigrateMethod
+    status: str
 
 
 class MySQLMigration:
@@ -180,14 +187,14 @@ class MySQLMigration:
             if row_format.upper() != "ROW":
                 raise UnsupportedBinLogFormatException(f"Unsupported binary log format: {row_format}, only ROW is supported")
 
-    def run_checks(self) -> MySQLMigrateMethod:
+    def run_checks(self) -> MySQLMigrateMethodValidation:
         """Raises an exception if one of the the pre-checks fails, otherwise a method to be used for migration"""
         migration_method = MySQLMigrateMethod.replication
 
+        msg: Optional[str] = "No error"
         if not self.target_master:
-            LOGGER.warning(
-                "Replication method is not available due to missing TARGET_MASTER_SERVICE_URI, falling back to dump"
-            )
+            msg = "Replication method is not available due to missing TARGET_MASTER_SERVICE_URI, falling back to dump"
+            LOGGER.warning(msg)
             migration_method = MySQLMigrateMethod.dump
 
         self._check_connections()
@@ -197,7 +204,7 @@ class MySQLMigration:
             self.skip_column_stats = True
 
         if migration_method == MySQLMigrateMethod.dump:
-            return migration_method
+            return MySQLMigrateMethodValidation(status=msg, method=migration_method)
 
         # Check if replication is possible
         try:
@@ -208,10 +215,11 @@ class MySQLMigration:
             self._check_server_id_overlapping()
             self._check_bin_log_format()
         except ReplicationNotAvailableException as e:
-            LOGGER.warning("Replication is not possible. Falling back to dump method, details: %s", e)
+            msg = f"Replication is not possible. Falling back to dump method, details: {e}"
+            LOGGER.warning(msg)
             migration_method = MySQLMigrateMethod.dump
 
-        return migration_method
+        return MySQLMigrateMethodValidation(status=msg, method=migration_method)
 
     def _stop_and_reset_slave(self):
         LOGGER.info("Stopping replication on target database")

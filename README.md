@@ -48,24 +48,26 @@ The tool requires `mysql-client` package 8.X, which can be installed from https:
 ## Usage
 ```
 mysql_migrate --help
-usage: mysql_migrate [-h] [-d] [-f FILTER_DBS] [--validate-only]
-                     [--seconds-behind-master SECONDS_BEHIND_MASTER]
-                     [--stop-replication]
+usage: mysql_migrate [-h] [--log-level {debug,info,warning,error}] [-f FILTER_DBS] [--validate-only] [--json] [--json-file JSON_FILE]
+                     [--seconds-behind-master SECONDS_BEHIND_MASTER] [--stop-replication] [--privilege-check-user PRIVILEGE_CHECK_USER]
 
 MySQL migration tool.
 
 optional arguments:
   -h, --help            show this help message and exit
-  -d, --debug           Enable debug logging.
+  --log-level {debug,info,warning,error}
+                        Change log level
   -f FILTER_DBS, --filter-dbs FILTER_DBS
                         Comma separated list of databases to filter out during migration
   --validate-only       Run migration pre-checks only
+  --json                Print the output as json, only used in combination with --validate-style
+  --json-file JSON_FILE
+                        File-path to write the json output and skip stdout, mutually exclusive to --json and only used in combination with --validate-style
   --seconds-behind-master SECONDS_BEHIND_MASTER
                         Max replication lag in seconds to wait for, by default no wait
   --stop-replication    Stop replication, by default replication is left running
   --privilege-check-user PRIVILEGE_CHECK_USER
                         User to be used when replicating for privileges check (e.g. 'checker@%', must have REPLICATION_APPLIER grant)
-
 ```
 
 The following environment variables are used by migration script:

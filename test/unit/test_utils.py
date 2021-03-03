@@ -47,14 +47,14 @@ def test_mysql_dump_processor_remove_log_bin(line):
      ("CREATE DEFINER=`admin`@`%` FUNCTION `test` (user CHAR(200))", "CREATE FUNCTION `test` (user CHAR(200))"),
      (
          "/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`%`*/ /*!50003 TRIGGER `abc` BEFORE INSERT ON `xyz` "
-     "FOR EACH ROW SET @a = @a + NEW.v */;;",
+         "FOR EACH ROW SET @a = @a + NEW.v */;;",
          "/*!50003 CREATE*/  /*!50003 TRIGGER `abc` BEFORE INSERT ON `xyz` FOR EACH ROW SET @a = @a + NEW.v */;;"
      ),
      (
          "/*!50106 CREATE*/ /*!50117 DEFINER=`root`@`%`*/ /*!50106 EVENT `ev` ON SCHEDULE AT '2021-01-19 14:55:31' "
-     "ON COMPLETION NOT PRESERVE ENABLE DO update abc.def set b=1 */ ;;",
+         "ON COMPLETION NOT PRESERVE ENABLE DO update abc.def set b=1 */ ;;",
          "/*!50106 CREATE*/  /*!50106 EVENT `ev` ON SCHEDULE AT '2021-01-19 14:55:31' ON COMPLETION NOT PRESERVE "
-     "ENABLE DO update abc.def set b=1 */ ;;"
+         "ENABLE DO update abc.def set b=1 */ ;;"
      )]
 )
 def test_mysql_dump_processor_remove_definers(line_in, line_out):
