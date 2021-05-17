@@ -22,6 +22,7 @@ The aim of this tool is to help migrate MySQL servers from one place to another.
     * Master user for replication management is specified (via `TARGET_MASTER_SERVICE_URI`)
     * User on the source database has enough permissions to create a replication user and read data
     * `server_id` on the source and the target do not overlap
+    * source `binlog_format` must be `ROW`
 
     If one of the pre-conditions is not met, the migration is falling back to the second method `mysqldump`
 
