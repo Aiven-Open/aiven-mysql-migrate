@@ -1,1 +1,3 @@
-*   @aiven/team-brute-force
+*                                       @aiven/team-brute-force
+SECURITY.md                             @aiven/team-security
+.github/workflows/codeql-analysis.yml   @aiven/team-security
