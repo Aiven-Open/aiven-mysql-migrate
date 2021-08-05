@@ -4,7 +4,7 @@ from aiven_mysql_migrate.exceptions import (
     EndpointConnectionException, GTIDModeDisabledException, MissingReplicationGrants, MySQLDumpException,
     MySQLImportException, NothingToMigrateException, ReplicaSetupException, ReplicationNotAvailableException,
     ServerIdsOverlappingException, TooManyDatabasesException, UnsupportedBinLogFormatException,
-    UnsupportedMySQLEngineException, UnsupportedMySQLVersionException
+    UnsupportedMySQLEngineException, UnsupportedMySQLVersionException, WrongMigrationConfigurationException
 )
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, PrivilegeCheckUser, select_global_var
 from concurrent import futures
@@ -180,11 +180,15 @@ class MySQLMigration:
             if row_format.upper() != "ROW":
                 raise UnsupportedBinLogFormatException(f"Unsupported binary log format: {row_format}, only ROW is supported")
 
-    def run_checks(self) -> MySQLMigrateMethod:
-        """Raises an exception if one of the the pre-checks fails, otherwise a method to be used for migration"""
+    def run_checks(self, fallback_to_dump_method: Optional[bool] = True) -> MySQLMigrateMethod:
+        """Raises an exception if one of the the pre-checks fails, otherwise a method to be used for migration.
+        If fallback_to_dump_method is False, re-raises validation exceptions in case if replication is not possible"""
         migration_method = MySQLMigrateMethod.replication
 
         if not self.target_master:
+            if not fallback_to_dump_method:
+                raise WrongMigrationConfigurationException("TARGET_MASTER_SERVICE_URI is not set")
+
             LOGGER.warning(
                 "Replication method is not available due to missing TARGET_MASTER_SERVICE_URI, falling back to dump"
             )
@@ -208,6 +212,9 @@ class MySQLMigration:
             self._check_server_id_overlapping()
             self._check_bin_log_format()
         except ReplicationNotAvailableException as e:
+            if not fallback_to_dump_method:
+                raise
+
             LOGGER.warning("Replication is not possible. Falling back to dump method, details: %s", e)
             migration_method = MySQLMigrateMethod.dump
 
