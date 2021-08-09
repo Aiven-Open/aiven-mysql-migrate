@@ -161,14 +161,14 @@ class MySQLMigration:
                 with conn_info.cur():
                     pass
             except pymysql.Error as e:
-                raise EndpointConnectionException(f"Connection to {conn_info.name} failed") from e
+                raise EndpointConnectionException(f"Connection to {conn_info.name} failed: {e}") from e
 
     def _check_databases_count(self):
         LOGGER.info("Checking for databases count limit")
 
         db_count = len(self.databases)
         if db_count == 0:
-            raise NothingToMigrateException()
+            raise NothingToMigrateException("No databases to migrate")
         elif db_count > config.MYSQL_MAX_DATABASES:
             raise TooManyDatabasesException(
                 f"Too many databases to migrate: {len(self.databases)} (> {config.MYSQL_MAX_DATABASES})"
