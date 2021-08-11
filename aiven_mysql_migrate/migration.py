@@ -56,7 +56,7 @@ class MySQLMigration:
             target_master_uri, name="target master"
         ) if target_master_uri else None
 
-        self.ignore_dbs = config.IGNORE_SYSTEM_DATABASES
+        self.ignore_dbs = config.IGNORE_SYSTEM_DATABASES.copy()
         if filter_dbs:
             self.ignore_dbs.update({db.strip() for db in filter_dbs.split(",")})
 
