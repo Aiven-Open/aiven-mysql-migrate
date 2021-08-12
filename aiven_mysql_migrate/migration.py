@@ -66,6 +66,7 @@ class MySQLMigration:
         if privilege_check_user:
             self.privilege_check_user = PrivilegeCheckUser.parse(privilege_check_user)
 
+    def setup_signal_handlers(self):
         signal.signal(signal.SIGINT, self._stop_migration)
         signal.signal(signal.SIGTERM, self._stop_migration)
         signal.signal(signal.SIGPIPE, self._stop_migration)

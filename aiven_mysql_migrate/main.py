@@ -51,6 +51,7 @@ def main(args=None, *, app="mysql_migrate"):
         filter_dbs=args.filter_dbs,
         privilege_check_user=args.privilege_check_user,
     )
+    migration.setup_signal_handlers()
 
     LOGGER.info("MySQL migration from %s to %s", migration.source.hostname, migration.target.hostname)
 
