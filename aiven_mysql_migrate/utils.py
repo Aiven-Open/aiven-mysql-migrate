@@ -184,10 +184,10 @@ class MySQLDumpProcessor:
                 if start_match:
                     if GTID_END_RE.match(line):
                         # One line match
-                        self.gtid = "+" + start_match.group(1)
+                        self.gtid = start_match.group(1)
                     else:
                         # Multi-line GTID comment
-                        self.gtid_block = "+" + start_match.group(1)
+                        self.gtid_block = start_match.group(1)
                     return ""
 
         line = MySQLDumpProcessor._remove_log_bin_data(line)

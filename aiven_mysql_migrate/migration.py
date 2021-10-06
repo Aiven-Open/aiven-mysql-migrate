@@ -336,10 +336,19 @@ class MySQLMigration:
         return dump_processor.get_gtid()
 
     def _set_gtid(self, gtid: str):
-        LOGGER.info("Setting GTID in target database to `%s`", gtid)
+        LOGGER.info("GTID from the dump is `%s`", gtid)
 
         with self.target_master.cur() as cur:
-            cur.execute("SET @@GLOBAL.GTID_PURGED = %s", (gtid, ))
+            # Check which of the source GTIDs are not yet applied - needed in case of running migration again on top
+            # of finished one
+            cur.execute("SELECT GTID_SUBTRACT(%s, @@GLOBAL.GTID_EXECUTED) AS DIFF", (gtid,))
+            new_gtids = cur.fetchone()["DIFF"]
+            if not new_gtids:
+                LOGGER.info("GTID_EXECUTED already contains GTID set from the dump, skipping `SET @@GTID_PURGED` step")
+                return
+
+            LOGGER.info("Adding new GTID set on the target service `%s`", new_gtids)
+            cur.execute("SET @@GLOBAL.GTID_PURGED = %s", ("+" + new_gtids, ))
             cur.execute("COMMIT")
 
     def _start_replication(self):
