@@ -38,6 +38,13 @@ def main(args=None, *, app="mysql_migrate"):
         help="User to be used when replicating for privileges check "
         "(e.g. 'checker@%%', must have REPLICATION_APPLIER grant)"
     )
+    parser.add_argument(
+        "--force-method",
+        type=str,
+        required=False,
+        default=None,
+        help="Force the migration method to be used as either replication or dump."
+    )
     args = parser.parse_args(args)
     setup_logging(debug=args.debug)
 
@@ -56,15 +63,19 @@ def main(args=None, *, app="mysql_migrate"):
     LOGGER.info("MySQL migration from %s to %s", migration.source.hostname, migration.target.hostname)
 
     LOGGER.info("Starting pre-checks")
-    migration_method = migration.run_checks()
+    migration_method = migration.run_checks(force_method=args.force_method)
+    expected_method = MySQLMigrateMethod.replication if args.force_method is None else args.force_method
 
-    if migration_method == MySQLMigrateMethod.replication:
+    if migration_method == expected_method:
         LOGGER.info("All pre-checks passed successfully.")
     else:
-        LOGGER.info("Not all pre-checks passed successfully. Replication method is not available.")
+        LOGGER.info("Not all pre-checks passed successfully. %s method is not available.", expected_method.capitalize())
+        # We were unable to use the desired method so all we can do here is exit.
+        if args.force_method is not None:
+            return f"{expected_method.capitalize()} method is not available."
 
     if args.validate_only:
-        return
+        return None
 
     LOGGER.info("Starting migration using method: %s", migration_method)
     migration.start(
@@ -76,6 +87,8 @@ def main(args=None, *, app="mysql_migrate"):
     LOGGER.info("Migration finished.")
     if migration_method == MySQLMigrateMethod.replication and not args.stop_replication:
         LOGGER.info("IMPORTANT: Replication is still running, make sure to stop it after switching to the target DB")
+
+    return None
 
 
 if __name__ == "__main__":
