@@ -21,7 +21,7 @@ setup(
         ],
     },
     install_requires=[
-        "pymysql==0.9.2"
+        "pymysql==0.10.0"
     ],
     license="Apache 2.0",
     name="aiven-mysql-migrate",

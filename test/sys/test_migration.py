@@ -1,8 +1,11 @@
+from aiven_mysql_migrate.exceptions import ReplicationNotAvailableException
 from aiven_mysql_migrate.migration import MySQLMigrateMethod, MySQLMigration
 from aiven_mysql_migrate.utils import MySQLConnectionInfo
+from contextlib import nullcontext as does_not_raise
 from pytest import fixture, mark
 
 import logging
+import pytest
 import random
 import string
 import time
@@ -110,3 +113,33 @@ def test_migration_fallback(src, dst, db_name):
         cur.execute(f"call {db_name}.test_proc(@body)")
         res = cur.fetchall()
         assert len(res) == 1 and res[0]["test_body"] == "test_body"
+
+
+@mark.parametrize(
+    "src,dst,forced_method,context", [
+        (my_wait("mysql80-src-2"), my_wait("mysql80-dst-2"), MySQLMigrateMethod.replication, does_not_raise()),
+        (
+            my_wait("mysql80-src-3"), my_wait("mysql80-dst-3"), MySQLMigrateMethod.replication,
+            pytest.raises(ReplicationNotAvailableException)
+        ),
+        (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3"), MySQLMigrateMethod.dump, does_not_raise()),
+    ]
+)
+def test_force_migration_method(src, dst, forced_method, context, db_name):
+    with src.cur() as cur:
+        cur.execute(f"CREATE DATABASE {db_name}")
+        cur.execute(f"USE {db_name}")
+        cur.execute("CREATE TABLE test (ID TEXT)")
+        cur.execute("INSERT INTO test (ID) VALUES (%s)", ["test_data"])
+        cur.execute("COMMIT")
+
+    migration = MySQLMigration(
+        source_uri=src.to_uri(),
+        target_uri=dst.to_uri(),
+        target_master_uri=dst.to_uri(),
+        privilege_check_user="root@%",
+    )
+
+    with context:
+        method = migration.run_checks(force_method=forced_method)
+        assert method == forced_method

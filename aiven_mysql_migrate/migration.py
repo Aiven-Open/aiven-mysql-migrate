@@ -181,12 +181,16 @@ class MySQLMigration:
             if row_format.upper() != "ROW":
                 raise UnsupportedBinLogFormatException(f"Unsupported binary log format: {row_format}, only ROW is supported")
 
-    def run_checks(self, fallback_to_dump_method: Optional[bool] = True) -> MySQLMigrateMethod:
+    def run_checks(self, force_method: Optional[MySQLMigrateMethod] = None) -> MySQLMigrateMethod:
         """Raises an exception if one of the the pre-checks fails, otherwise a method to be used for migration.
-        If fallback_to_dump_method is False, re-raises validation exceptions in case if replication is not possible"""
-        migration_method = MySQLMigrateMethod.replication
+        If force_method is set, re-raises validation exceptions in case the chosen method is not possible."""
+        migration_method = MySQLMigrateMethod.replication if force_method is None else force_method
+        fallback_to_dump_method = force_method is None
 
-        if not self.target_master:
+        if force_method is not None:
+            LOGGER.info("Forcing migration method %r", migration_method)
+
+        if migration_method == MySQLMigrateMethod.replication and not self.target_master:
             if not fallback_to_dump_method:
                 raise WrongMigrationConfigurationException("TARGET_MASTER_SERVICE_URI is not set")
 
