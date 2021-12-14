@@ -15,6 +15,10 @@ class TooManyDatabasesException(MigrationPreCheckException):
     pass
 
 
+class DatabaseTooLargeException(MigrationPreCheckException):
+    pass
+
+
 class NothingToMigrateException(MigrationPreCheckException):
     pass
 

@@ -45,6 +45,12 @@ def main(args=None, *, app="mysql_migrate"):
         default=None,
         help="Force the migration method to be used as either replication or dump."
     )
+    parser.add_argument(
+        "--dbs-max-total-size",
+        type=int,
+        default=-1,
+        help="Max total size of databases to be migrated, ignored by default",
+    )
     args = parser.parse_args(args)
     setup_logging(debug=args.debug)
 
@@ -63,7 +69,8 @@ def main(args=None, *, app="mysql_migrate"):
     LOGGER.info("MySQL migration from %s to %s", migration.source.hostname, migration.target.hostname)
 
     LOGGER.info("Starting pre-checks")
-    migration_method = migration.run_checks(force_method=args.force_method)
+    dbs_max_total_size = None if args.dbs_max_total_size == -1 else args.dbs_max_total_size
+    migration_method = migration.run_checks(force_method=args.force_method, dbs_max_total_size=dbs_max_total_size)
     expected_method = MySQLMigrateMethod.replication if args.force_method is None else args.force_method
 
     if migration_method == expected_method:

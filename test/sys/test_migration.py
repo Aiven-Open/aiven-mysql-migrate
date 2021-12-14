@@ -1,4 +1,5 @@
-from aiven_mysql_migrate.exceptions import ReplicationNotAvailableException
+from aiven_mysql_migrate.config import IGNORE_SYSTEM_DATABASES
+from aiven_mysql_migrate.exceptions import DatabaseTooLargeException, ReplicationNotAvailableException
 from aiven_mysql_migrate.migration import MySQLMigrateMethod, MySQLMigration
 from aiven_mysql_migrate.utils import MySQLConnectionInfo
 from contextlib import nullcontext as does_not_raise
@@ -143,3 +144,45 @@ def test_force_migration_method(src, dst, forced_method, context, db_name):
     with context:
         method = migration.run_checks(force_method=forced_method)
         assert method == forced_method
+
+
+@mark.parametrize("src,dst", [
+    (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3")),
+])
+def test_database_size_check(src, dst, db_name):
+    ignore_dbs = IGNORE_SYSTEM_DATABASES.copy()
+    ignore_dbs.add(db_name)
+
+    with src.cur() as cur:
+        cur.execute(
+            "SELECT TABLE_SCHEMA FROM INFORMATION_SCHEMA.TABLES "
+            "WHERE TABLE_SCHEMA NOT IN ({format_dbs})".format(format_dbs=", ".join(["%s"] * len(ignore_dbs))),
+            tuple(ignore_dbs)
+        )
+        other_test_dbs = {table_schema['TABLE_SCHEMA'] for table_schema in cur.fetchall()}
+
+    with src.cur() as cur:
+        cur.execute(f"CREATE DATABASE {db_name}")
+        cur.execute(f"USE {db_name}")
+        cur.execute("CREATE TABLE test (ID TEXT)")
+        cur.execute("INSERT INTO test (ID) VALUES (%s)", ["test_data"])
+
+    migration = MySQLMigration(
+        source_uri=src.to_uri(),
+        target_uri=dst.to_uri(),
+        target_master_uri=dst.to_uri(),
+    )
+
+    # Should fit to this size.
+    migration.run_checks(dbs_max_total_size=1048576)
+
+    # For this the database is too large.
+    with pytest.raises(DatabaseTooLargeException):
+        migration.run_checks(dbs_max_total_size=0)
+
+    migration.ignore_dbs.add(db_name)
+    # Other tests have added dbs so we ignore them too.
+    for db in other_test_dbs:
+        migration.ignore_dbs.add(db)
+    # This is ok if we ignore all DBs there is.
+    migration.run_checks(dbs_max_total_size=0)

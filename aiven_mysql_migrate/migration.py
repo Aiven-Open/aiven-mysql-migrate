@@ -1,10 +1,11 @@
 # Copyright (c) 2020 Aiven, Helsinki, Finland. https://aiven.io/
 from aiven_mysql_migrate import config
 from aiven_mysql_migrate.exceptions import (
-    EndpointConnectionException, GTIDModeDisabledException, MissingReplicationGrants, MySQLDumpException,
-    MySQLImportException, NothingToMigrateException, ReplicaSetupException, ReplicationNotAvailableException,
-    ServerIdsOverlappingException, TooManyDatabasesException, UnsupportedBinLogFormatException,
-    UnsupportedMySQLEngineException, UnsupportedMySQLVersionException, WrongMigrationConfigurationException
+    DatabaseTooLargeException, EndpointConnectionException, GTIDModeDisabledException, MissingReplicationGrants,
+    MySQLDumpException, MySQLImportException, NothingToMigrateException, ReplicaSetupException,
+    ReplicationNotAvailableException, ServerIdsOverlappingException, TooManyDatabasesException,
+    UnsupportedBinLogFormatException, UnsupportedMySQLEngineException, UnsupportedMySQLVersionException,
+    WrongMigrationConfigurationException
 )
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, PrivilegeCheckUser, select_global_var
 from concurrent import futures
@@ -175,13 +176,30 @@ class MySQLMigration:
                 f"Too many databases to migrate: {len(self.databases)} (> {config.MYSQL_MAX_DATABASES})"
             )
 
+    def _check_database_size(self, max_size: float):
+        LOGGER.info("Checking max total databases size")
+
+        with self.source.cur() as cur:
+            cur.execute(
+                "SELECT SUM(DATA_LENGTH + INDEX_LENGTH) AS size FROM INFORMATION_SCHEMA.TABLES "
+                "WHERE TABLE_SCHEMA NOT IN ({format_dbs})".format(format_dbs=", ".join(["%s"] * len(self.ignore_dbs))),
+                tuple(self.ignore_dbs)
+            )
+            source_size = cur.fetchone()["size"] or 0
+        if source_size > max_size:
+            raise DatabaseTooLargeException()
+
     def _check_bin_log_format(self):
         with self.source.cur() as cur:
             row_format = select_global_var(cur, "binlog_format")
             if row_format.upper() != "ROW":
                 raise UnsupportedBinLogFormatException(f"Unsupported binary log format: {row_format}, only ROW is supported")
 
-    def run_checks(self, force_method: Optional[MySQLMigrateMethod] = None) -> MySQLMigrateMethod:
+    def run_checks(
+        self,
+        force_method: Optional[MySQLMigrateMethod] = None,
+        dbs_max_total_size: Optional[float] = None
+    ) -> MySQLMigrateMethod:
         """Raises an exception if one of the the pre-checks fails, otherwise a method to be used for migration.
         If force_method is set, re-raises validation exceptions in case the chosen method is not possible."""
         migration_method = MySQLMigrateMethod.replication if force_method is None else force_method
@@ -201,6 +219,8 @@ class MySQLMigration:
 
         self._check_connections()
         self._check_databases_count()
+        if dbs_max_total_size is not None:
+            self._check_database_size(max_size=dbs_max_total_size)
 
         if self.source.version < LooseVersion("8.0.0") or self.target.version < LooseVersion("8.0.0"):
             self.skip_column_stats = True
@@ -345,7 +365,7 @@ class MySQLMigration:
         with self.target_master.cur() as cur:
             # Check which of the source GTIDs are not yet applied - needed in case of running migration again on top
             # of finished one
-            cur.execute("SELECT GTID_SUBTRACT(%s, @@GLOBAL.GTID_EXECUTED) AS DIFF", (gtid,))
+            cur.execute("SELECT GTID_SUBTRACT(%s, @@GLOBAL.GTID_EXECUTED) AS DIFF", (gtid, ))
             new_gtids = cur.fetchone()["DIFF"]
             if not new_gtids:
                 LOGGER.info("GTID_EXECUTED already contains GTID set from the dump, skipping `SET @@GTID_PURGED` step")
