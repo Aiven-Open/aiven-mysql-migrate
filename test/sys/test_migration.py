@@ -1,5 +1,6 @@
 from aiven_mysql_migrate.config import IGNORE_SYSTEM_DATABASES
-from aiven_mysql_migrate.exceptions import DatabaseTooLargeException, ReplicationNotAvailableException
+from aiven_mysql_migrate.exceptions import DatabaseTooLargeException, ReplicationNotAvailableException, \
+    SSLNotSupportedException
 from aiven_mysql_migrate.migration import MySQLMigrateMethod, MySQLMigration
 from aiven_mysql_migrate.utils import MySQLConnectionInfo
 from contextlib import nullcontext as does_not_raise
@@ -186,3 +187,34 @@ def test_database_size_check(src, dst, db_name):
         migration.ignore_dbs.add(db)
     # This is ok if we ignore all DBs there is.
     migration.run_checks(dbs_max_total_size=0)
+
+
+@mark.parametrize("src,dst", [
+    (my_wait("mysql80-src-4", ssl=False), my_wait("mysql80-dst-3")),
+])
+def test_database_ssl_disabled(src, dst, db_name):
+    ignore_dbs = IGNORE_SYSTEM_DATABASES.copy()
+    ignore_dbs.add(db_name)
+
+    with src.cur() as cur:
+        cur.execute(f"CREATE DATABASE {db_name}")
+        cur.execute(f"USE {db_name}")
+        cur.execute("CREATE TABLE test (ID TEXT)")
+
+    # Default check without SSL should pass
+    migration = MySQLMigration(
+        source_uri=src.to_uri(),
+        target_uri=dst.to_uri(),
+        target_master_uri=dst.to_uri(),
+    )
+    migration.run_checks()
+
+    # Enable SSL and now it should fail
+    src.ssl = True
+    migration = MySQLMigration(
+        source_uri=src.to_uri(),
+        target_uri=dst.to_uri(),
+        target_master_uri=dst.to_uri(),
+    )
+    with pytest.raises(SSLNotSupportedException):
+        migration.run_checks()

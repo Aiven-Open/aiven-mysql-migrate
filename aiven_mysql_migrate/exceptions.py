@@ -7,6 +7,10 @@ class EndpointConnectionException(MigrationPreCheckException):
     pass
 
 
+class SSLNotSupportedException(MigrationPreCheckException):
+    pass
+
+
 class WrongMigrationConfigurationException(MigrationPreCheckException):
     pass
 
