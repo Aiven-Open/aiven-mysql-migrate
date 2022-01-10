@@ -5,11 +5,12 @@ from aiven_mysql_migrate.exceptions import (
     MySQLDumpException, MySQLImportException, NothingToMigrateException, ReplicaSetupException,
     ReplicationNotAvailableException, ServerIdsOverlappingException, TooManyDatabasesException,
     UnsupportedBinLogFormatException, UnsupportedMySQLEngineException, UnsupportedMySQLVersionException,
-    WrongMigrationConfigurationException
+    WrongMigrationConfigurationException, SSLNotSupportedException
 )
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, PrivilegeCheckUser, select_global_var
 from concurrent import futures
 from distutils.version import LooseVersion
+from pymysql.constants.ER import HANDSHAKE_ERROR
 from subprocess import Popen
 from typing import List, Optional
 
@@ -163,6 +164,8 @@ class MySQLMigration:
                 with conn_info.cur():
                     pass
             except pymysql.Error as e:
+                if e.args[0] == HANDSHAKE_ERROR:
+                    raise SSLNotSupportedException(f"SSL is required, but not supported by the {conn_info.name}") from e
                 raise EndpointConnectionException(f"Connection to {conn_info.name} failed: {e}") from e
 
     def _check_databases_count(self):
