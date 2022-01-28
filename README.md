@@ -96,3 +96,7 @@ SOURCE_SERVICE_URI="mysql://<src_admin>:<pwd>@<src_host>:<port>/?ssl-mode=REQUIR
 ```bash
 mysql_migrate --filter-dbs "<temp_db1>,<temp_db2>" --seconds-behind-master 0 --stop-replication
 ```
+
+## Trademarks
+
+MySQL is a registered trademark of Oracle and/or its affiliates. Other names may be trademarks of their respective owners.
