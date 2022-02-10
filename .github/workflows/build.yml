@@ -1,0 +1,75 @@
+name: Test aiven-mysql-migrate
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - '**'
+  pull_request:
+
+jobs:
+
+  static-checks:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # only use one version for the lint step
+        python-version: [3.9]
+
+    steps:
+
+    - id: checkout-code
+      uses: actions/checkout@v2
+
+    - id: prepare-python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - id: dependencies
+      run: pip install -r requirement-dev.txt
+
+    - id: statis-checks
+      run: make static-checks
+
+  unittest:
+
+    runs-on: ubuntu-latest
+    needs: static-checks
+    strategy:
+      matrix:
+        python-version: [3.7, 3.8, 3.9]
+
+    steps:
+
+    - id: checkout-code
+      uses: actions/checkout@v1
+
+    - id: prepare-python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - id: dependencies
+      run: pip install -r requirement-dev.txt
+
+    - id: run-unittests
+      run: make test
+
+  systest:
+
+    runs-on: ubuntu-latest
+    needs:
+    - static-checks
+    - unittest
+
+    steps:
+
+    - id: checkout-code
+      uses: actions/checkout@v1
+
+    - id: run-systests
+      run: make && make systest
+
