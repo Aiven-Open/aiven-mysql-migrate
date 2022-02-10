@@ -308,13 +308,17 @@ class MySQLMigration:
         LOGGER.info("Starting import MySQL dump file into target database")
 
         dump_processor = MySQLDumpProcessor()
-        self.mysqldump_proc = Popen(
+        self.mysqldump_proc = Popen(  # pylint: disable=consider-using-with
             self._get_dump_command(migration_method=migration_method),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             universal_newlines=True
         )
-        self.mysql_proc = Popen(self._get_import_command(), stdin=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.mysql_proc = Popen(  # pylint: disable=consider-using-with
+            self._get_import_command(),
+            stdin=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True
+        )
 
         # make mypy happy
         assert self.mysqldump_proc.stdout

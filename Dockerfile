@@ -1,5 +1,6 @@
 FROM python:3.7-buster
 
+RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 467B942D3A79BD29
 RUN apt-get update -y
 RUN apt-get install -y expect
 RUN curl -L 'https://dev.mysql.com/get/mysql-apt-config_0.8.16-1_all.deb' -o mysql-apt-config_0.8.16-1_all.deb
