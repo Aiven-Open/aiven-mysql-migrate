@@ -233,9 +233,12 @@ class MySQLMigration:
 
         # Check if replication is possible
         try:
+            # Version check should be always first, there is no sense
+            # in other checks until we are sure that we are dealing
+            # with supported ones.
+            self._check_versions_replication_support()
             self._check_user_can_replicate()
             self._check_gtid_mode_enabled()
-            self._check_versions_replication_support()
             self._check_engine_support()
             self._check_server_id_overlapping()
             self._check_bin_log_format()
