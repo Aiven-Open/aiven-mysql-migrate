@@ -52,7 +52,17 @@ class MySQLMigration:
         self.mysqldump_proc: Optional[Popen] = None
         self.mysql_proc: Optional[Popen] = None
 
-        self.source = MySQLConnectionInfo.from_uri(source_uri, name="source")
+        if config.SOURCE_SSL_CA and config.SOURCE_SSL_CERT and config.SOURCE_SSL_KEY:
+            self.source = MySQLConnectionInfo.from_uri(
+                source_uri,
+                name="source",
+                sslca=config.SOURCE_SSL_CA,
+                sslcert=config.SOURCE_SSL_CERT,
+                sslkey=config.SOURCE_SSL_KEY
+            )
+        else:
+            self.source = MySQLConnectionInfo.from_uri(source_uri, name="source")
+
         self.target = MySQLConnectionInfo.from_uri(target_uri, name="target")
         self.target_master = MySQLConnectionInfo.from_uri(
             target_master_uri, name="target master"
@@ -160,6 +170,8 @@ class MySQLMigration:
             conn_infos.append(self.target_master)
 
         for conn_info in conn_infos:
+            LOGGER.debug("conn_info :[%s]", conn_info)
+
             try:
                 with conn_info.cur():
                     pass
