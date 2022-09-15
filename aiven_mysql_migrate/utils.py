@@ -9,6 +9,7 @@ import contextlib
 import logging
 import pymysql
 import re
+import urllib
 
 LOGGER = logging.getLogger(__name__)
 
@@ -63,27 +64,22 @@ class MySQLConnectionInfo:
         ssl = not (options and options.get("ssl-mode", ["DISABLE"]) == ["DISABLE"])
 
         LOGGER.debug("from_uri - sslca:[%s], sslcert:[%s], sslkey:[%s]", sslca, sslcert, sslkey)
-        if sslca and sslcert and sslkey:
-            return MySQLConnectionInfo(
-                hostname=res.hostname,
-                port=port,
-                username=res.username,
-                password=res.password,
-                ssl=ssl,
-                sslca=sslca,
-                sslcert=sslcert,
-                sslkey=sslkey,
-                name=name
-            )
-        else:
-            return MySQLConnectionInfo(
-                hostname=res.hostname, port=port, username=res.username, password=res.password, ssl=ssl, name=name
+        return MySQLConnectionInfo(
+            hostname=res.hostname,
+            port=port,
+            username=res.username,
+            password=res.password,
+            ssl=ssl,
+            sslca=sslca,
+            sslcert=sslcert,
+            sslkey=sslkey,
+            name=name
             )
 
     def to_uri(self):
         ssl_mode = "DISABLE" if not self.ssl else "REQUIRE"
-        ssl_auth = f"&ssl-ca={self.sslca}&ssl-cert={self.sslcert}&ssl-key={self.sslkey}" \
-                   if self.sslca and self.sslcert and self.sslcert else ""
+        ssl_auth = urllib.parse.urlencode(f"&ssl-ca={self.sslca}&ssl-cert={self.sslcert}&ssl-key={self.sslkey}") \
+            if self.sslca and self.sslcert and self.sslcert else ""
         LOGGER.debug("ssl_auth:[%s]]", ssl_auth)
         return f"mysql://{self.username}:{self.password}@{self.hostname}:{self.port}/?ssl-mode={ssl_mode}{ssl_auth}"
 
@@ -95,35 +91,22 @@ class MySQLConnectionInfo:
         if self.ssl:
             ssl = {"require": True}
 
-        if self.sslca and self.sslcert and self.sslkey:
-            LOGGER.debug("connect [%s]- sslca:[%s], sslcert:[%s], sslkey:[%s]",
-                         self.name, self.sslca, self.sslcert, self.sslkey)
-            return pymysql.connect(
-                charset="utf8mb4",
-                connect_timeout=config.MYSQL_CONNECTION_TIMEOUT,
-                cursorclass=pymysql.cursors.DictCursor,
-                host=self.hostname,
-                password=self.password,
-                read_timeout=config.MYSQL_READ_TIMEOUT,
-                port=self.port,
-                ssl_ca=self.sslca,
-                ssl_cert=self.sslcert,
-                ssl_key=self.sslkey,
-                user=self.username,
-                write_timeout=config.MYSQL_WRITE_TIMEOUT,
-            )
-        else:
-            return pymysql.connect(
-                charset="utf8mb4",
-                connect_timeout=config.MYSQL_CONNECTION_TIMEOUT,
-                cursorclass=pymysql.cursors.DictCursor,
-                host=self.hostname,
-                password=self.password,
-                read_timeout=config.MYSQL_READ_TIMEOUT,
-                port=self.port,
-                ssl=ssl,
-                user=self.username,
-                write_timeout=config.MYSQL_WRITE_TIMEOUT,
+        LOGGER.debug("connect [%s]- sslca:[%s], sslcert:[%s], sslkey:[%s]", self.name, self.sslca, self.sslcert, self.sslkey)
+
+        return pymysql.connect(
+            charset="utf8mb4",
+            connect_timeout=config.MYSQL_CONNECTION_TIMEOUT,
+            cursorclass=pymysql.cursors.DictCursor,
+            host=self.hostname,
+            password=self.password,
+            read_timeout=config.MYSQL_READ_TIMEOUT,
+            port=self.port,
+            ssl=ssl,
+            ssl_ca=self.sslca,
+            ssl_cert=self.sslcert,
+            ssl_key=self.sslkey,
+            user=self.username,
+            write_timeout=config.MYSQL_WRITE_TIMEOUT,
             )
 
     @property

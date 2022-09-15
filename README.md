@@ -73,9 +73,6 @@ The following environment variables are used by migration script:
 * `TARGET_SERVICE_URI` - service URI to the target MySQL database with admin credentials, which will be used for dump import.
 * `TARGET_MASTER_SERVICE_URI` - service URI for managing replication while migrating, omitting this variable will
 lead to fall-back to dump solution.
-* `MYSQL_CONNECTION_TIMEOUT` - MySQL connect_timeout (default: 5 seconds)
-* `MYSQL_WRITE_TIMEOUT` - MySQL write_timeout (default: 5 seconds)
-* `MYSQL_READ_TIMEOUT` - MySQL read_timeout (default: 5 seconds)
 SOURCE_SSL_* are optional, when provided it uses client certificate authentication.  
 * `SOURCE_SSL_CA` - The path name of the Certificate Authority (CA) certificate file in PEM format.
 * `SOURCE_SSL_CERT` - The path name of the server SSL public key certificate file in PEM format.
