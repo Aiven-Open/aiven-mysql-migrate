@@ -63,7 +63,6 @@ class MySQLConnectionInfo:
         options = parse_qs(res.query)
         ssl = not (options and options.get("ssl-mode", ["DISABLE"]) == ["DISABLE"])
 
-        LOGGER.debug("from_uri - sslca:[%s], sslcert:[%s], sslkey:[%s]", sslca, sslcert, sslkey)
         return MySQLConnectionInfo(
             hostname=res.hostname,
             port=port,
@@ -78,7 +77,13 @@ class MySQLConnectionInfo:
 
     def to_uri(self):
         ssl_mode = "DISABLE" if not self.ssl else "REQUIRE"
-        ssl_auth = urllib.parse.urlencode(f"&ssl-ca={self.sslca}&ssl-cert={self.sslcert}&ssl-key={self.sslkey}") \
+
+        ssl_params = {
+            "ssl-ca": self.sslca,
+            "ssl-cert": self.sslcert,
+            "ssl-key": self.sslkey
+        }
+        ssl_auth = urllib.parse.urlencode(ssl_params) \
             if self.sslca and self.sslcert and self.sslcert else ""
         LOGGER.debug("ssl_auth:[%s]]", ssl_auth)
         return f"mysql://{self.username}:{self.password}@{self.hostname}:{self.port}/?ssl-mode={ssl_mode}{ssl_auth}"
@@ -107,7 +112,7 @@ class MySQLConnectionInfo:
             ssl_key=self.sslkey,
             user=self.username,
             write_timeout=config.MYSQL_WRITE_TIMEOUT,
-            )
+        )
 
     @property
     def version(self) -> str:
