@@ -111,3 +111,29 @@ def test_mysql_connection_info_from_uri(uri: str, exception_class: Optional[Type
 )
 def test_mysql_connection_info_to_uri(uri: str, expected: str) -> None:
     assert MySQLConnectionInfo.from_uri(uri).to_uri() == expected
+
+
+@mark.parametrize(
+    "password_length, template_char, exception_class",
+    [
+        (0, "a", WrongMigrationConfigurationException),
+        (1, "a", None),
+        (31, "a", None),
+        (32, "a", None),
+        (33, "a", WrongMigrationConfigurationException),
+        (34, "a", WrongMigrationConfigurationException),
+        (16, "é", None),
+        (17, "é", WrongMigrationConfigurationException),
+    ],
+)
+def test_mysql_connection_info_from_uri_password_length(
+        password_length: int,
+        template_char: str,
+        exception_class: Optional[Type[Exception]],
+) -> None:
+    uri = "mysql://<user>:{}@<ip>:1234/".format(template_char * password_length)
+    if exception_class is not None:
+        with raises(exception_class):
+            MySQLConnectionInfo.from_uri(uri)
+    else:
+        MySQLConnectionInfo.from_uri(uri)

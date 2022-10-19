@@ -11,6 +11,8 @@ import re
 
 DEFAULT_MYSQL_PORT = 3306
 ALLOWED_OPTIONS = {"ssl-mode"}
+# See https://dev.mysql.com/doc/mysql-errors/8.0/en/server-error-reference.html#error_er_change_master_password_length
+MAX_PASSWORD_LENGTH = 32
 
 ROUTINE_DEFINER_RE = re.compile("^CREATE DEFINER *= *(`.*?`@`.*?`) +(.*$)")
 IMPORT_DEFINER_RE = re.compile(r"^/\*!50013 DEFINER *= *`.*?`@`.*?` +SQL SECURITY DEFINER \*/$")
@@ -51,6 +53,9 @@ class MySQLConnectionInfo:
             port = res.port or DEFAULT_MYSQL_PORT
         except ValueError as e:
             raise WrongMigrationConfigurationException(f"{uri!r} invalid port") from e
+
+        if len(res.password.encode()) > MAX_PASSWORD_LENGTH:
+            raise WrongMigrationConfigurationException("The password for the replication user must not exceed 32 characters")
 
         options = parse_qs(res.query)
         MySQLConnectionInfo._validate_options(options)
