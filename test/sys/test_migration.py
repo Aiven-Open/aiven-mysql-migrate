@@ -29,7 +29,7 @@ def random_db_name():
 def my_wait(host, ssl=True, retries=MYSQL_WAIT_RETRIES) -> MySQLConnectionInfo:
     uri = f"mysql://root:test@{host}/"
     if not ssl:
-        uri += "?ssl-mode=DISABLE"
+        uri += "?ssl-mode=DISABLED"
     conn = MySQLConnectionInfo.from_uri(uri)
     for _ in range(retries):
         try:

@@ -55,7 +55,7 @@ class MySQLConnectionInfo:
         options = parse_qs(res.query)
         MySQLConnectionInfo._validate_options(options)
 
-        ssl = not (options and options.get("ssl-mode", ["DISABLE"]) == ["DISABLE"])
+        ssl = not (options and options.get("ssl-mode", ["DISABLED"]) in (["DISABLE"], ["DISABLED"]))
         return MySQLConnectionInfo(
             hostname=res.hostname, port=port, username=res.username, password=res.password, ssl=ssl, name=name
         )
@@ -67,11 +67,12 @@ class MySQLConnectionInfo:
 
         if options and "ssl-mode" in options:
             ssl_mode = options["ssl-mode"]
-            if ssl_mode not in (["DISABLE"], ["REQUIRE"]):
-                raise WrongMigrationConfigurationException("ssl-mode must be either 'DISABLE' or 'REQUIRE'")
+            if ssl_mode not in (["DISABLE"], ["DISABLED"], ["REQUIRED"]):
+                # don't include the legacy value in the error message
+                raise WrongMigrationConfigurationException("ssl-mode must be either 'DISABLED' or 'REQUIRED'")
 
     def to_uri(self):
-        ssl_mode = "DISABLE" if not self.ssl else "REQUIRE"
+        ssl_mode = "DISABLED" if not self.ssl else "REQUIRED"
         return f"mysql://{self.username}:{self.password}@{self.hostname}:{self.port}/?ssl-mode={ssl_mode}"
 
     def repr(self):
