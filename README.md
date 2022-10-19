@@ -90,7 +90,7 @@ SOURCE_SERVICE_URI="mysql://<src_admin>:<pwd>@<src_host>:<port>/?ssl-mode=REQUIR
   mysql_migrate --validate-only
 ```
 
-`ssl-mode` parameter can be one of `DISABLE` or `REQUIRED`
+`ssl-mode` parameter can be one of `DISABLED` or `REQUIRED`
 
 ## Migrate:
 ```bash

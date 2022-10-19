@@ -66,29 +66,48 @@ def test_mysql_dump_processor_remove_definers(line_in, line_out):
 
 
 @mark.parametrize(
-    "uri, exception_class",
+    "uri, exception_class, ssl",
     [
-        ("mysql://<user>:<pwd>@<ip>:1234/", None),
-        ("mysql://<user>:<pwd>@<ip>:1234/?", None),
-        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=DISABLE", None),
-        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRE", None),
+        ("mysql://<user>:<pwd>@<ip>:1234/", None, True),
+        ("mysql://<user>:<pwd>@<ip>:1234/?", None, True),
+        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=DISABLED", None, False),
+        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRED", None, True),
+        # previously documented legacy value
+        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=DISABLE", None, False),
         # options with no values get dropped
-        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=", None),
+        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=", None, True),
         # extra parameter
-        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRE&bar=baz", WrongMigrationConfigurationException),
+        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRED&bar=baz", WrongMigrationConfigurationException, None),
         # unsupported value for ssl-mode
-        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=something", WrongMigrationConfigurationException),
+        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=something", WrongMigrationConfigurationException, None),
         # unexpected parameter
-        ("mysql://<user>:<pwd>@<ip>:1234/?foo=bar", WrongMigrationConfigurationException),
+        ("mysql://<user>:<pwd>@<ip>:1234/?foo=bar", WrongMigrationConfigurationException, None),
         # passing the ssl-mode twice
-        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRE&ssl-mode=DISABLE", WrongMigrationConfigurationException),
+        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRED&ssl-mode=DISABLED", WrongMigrationConfigurationException, None),
         # non-numeric port
-        ("mysql://<user>:<pwd>@<ip>:abcd/", WrongMigrationConfigurationException),
+        ("mysql://<user>:<pwd>@<ip>:abcd/", WrongMigrationConfigurationException, None),
     ],
 )
-def test_mysql_connection_info_from_uri(uri: str, exception_class: Optional[Type[Exception]]) -> None:
+def test_mysql_connection_info_from_uri(uri: str, exception_class: Optional[Type[Exception]], ssl: Optional[bool]) -> None:
     if exception_class is not None:
         with raises(exception_class):
             MySQLConnectionInfo.from_uri(uri)
     else:
-        MySQLConnectionInfo.from_uri(uri)
+        assert ssl is not None
+        conn_info = MySQLConnectionInfo.from_uri(uri)
+        assert conn_info.ssl == ssl
+
+
+@mark.parametrize(
+    "uri, expected",
+    [
+        ("mysql://<user>:<pwd>@<ip>:1234/", "mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRED"),
+        ("mysql://<user>:<pwd>@<ip>:1234/?", "mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRED"),
+        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=DISABLED", "mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=DISABLED"),
+        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRED", "mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRED"),
+        # previously documented legacy value
+        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=DISABLE", "mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=DISABLED"),
+    ],
+)
+def test_mysql_connection_info_to_uri(uri: str, expected: str) -> None:
+    assert MySQLConnectionInfo.from_uri(uri).to_uri() == expected
