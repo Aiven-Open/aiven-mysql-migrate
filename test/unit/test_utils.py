@@ -1,5 +1,8 @@
-from aiven_mysql_migrate.utils import MySQLDumpProcessor
-from pytest import mark
+from typing import Optional, Type
+
+from aiven_mysql_migrate.exceptions import WrongMigrationConfigurationException
+from aiven_mysql_migrate.utils import MySQLDumpProcessor, MySQLConnectionInfo
+from pytest import mark, raises
 
 
 @mark.parametrize(
@@ -60,3 +63,32 @@ def test_mysql_dump_processor_remove_log_bin(line):
 def test_mysql_dump_processor_remove_definers(line_in, line_out):
     helper = MySQLDumpProcessor()
     assert helper.process_line(line_in) == line_out
+
+
+@mark.parametrize(
+    "uri, exception_class",
+    [
+        ("mysql://<user>:<pwd>@<ip>:1234/", None),
+        ("mysql://<user>:<pwd>@<ip>:1234/?", None),
+        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=DISABLE", None),
+        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRE", None),
+        # options with no values get dropped
+        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=", None),
+        # extra parameter
+        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRE&bar=baz", WrongMigrationConfigurationException),
+        # unsupported value for ssl-mode
+        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=something", WrongMigrationConfigurationException),
+        # unexpected parameter
+        ("mysql://<user>:<pwd>@<ip>:1234/?foo=bar", WrongMigrationConfigurationException),
+        # passing the ssl-mode twice
+        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRE&ssl-mode=DISABLE", WrongMigrationConfigurationException),
+        # non-numeric port
+        ("mysql://<user>:<pwd>@<ip>:abcd/", WrongMigrationConfigurationException),
+    ],
+)
+def test_mysql_connection_info_from_uri(uri: str, exception_class: Optional[Type[Exception]]) -> None:
+    if exception_class is not None:
+        with raises(exception_class):
+            MySQLConnectionInfo.from_uri(uri)
+    else:
+        MySQLConnectionInfo.from_uri(uri)

@@ -2,7 +2,7 @@
 from aiven_mysql_migrate import config
 from aiven_mysql_migrate.exceptions import WrongMigrationConfigurationException
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, AnyStr, Dict
 from urllib.parse import parse_qs, urlparse
 
 import contextlib
@@ -10,6 +10,7 @@ import pymysql
 import re
 
 DEFAULT_MYSQL_PORT = 3306
+ALLOWED_OPTIONS = {"ssl-mode"}
 
 ROUTINE_DEFINER_RE = re.compile("^CREATE DEFINER *= *(`.*?`@`.*?`) +(.*$)")
 IMPORT_DEFINER_RE = re.compile(r"^/\*!50013 DEFINER *= *`.*?`@`.*?` +SQL SECURITY DEFINER \*/$")
@@ -46,12 +47,28 @@ class MySQLConnectionInfo:
         except ValueError as e:
             raise WrongMigrationConfigurationException(f"{uri!r} is not a valid service URI") from e
 
-        port = res.port or DEFAULT_MYSQL_PORT
+        try:
+            port = res.port or DEFAULT_MYSQL_PORT
+        except ValueError as e:
+            raise WrongMigrationConfigurationException(f"{uri!r} invalid port") from e
+
         options = parse_qs(res.query)
+        MySQLConnectionInfo._validate_options(options)
+
         ssl = not (options and options.get("ssl-mode", ["DISABLE"]) == ["DISABLE"])
         return MySQLConnectionInfo(
             hostname=res.hostname, port=port, username=res.username, password=res.password, ssl=ssl, name=name
         )
+
+    @staticmethod
+    def _validate_options(options: Dict[str, List[AnyStr]]) -> None:
+        if not ALLOWED_OPTIONS.issuperset(options):
+            raise WrongMigrationConfigurationException(f"Only {', '.join(ALLOWED_OPTIONS)} allowed as uri parameter")
+
+        if options and "ssl-mode" in options:
+            ssl_mode = options["ssl-mode"]
+            if ssl_mode not in (["DISABLE"], ["REQUIRE"]):
+                raise WrongMigrationConfigurationException("ssl-mode must be either 'DISABLE' or 'REQUIRE'")
 
     def to_uri(self):
         ssl_mode = "DISABLE" if not self.ssl else "REQUIRE"
