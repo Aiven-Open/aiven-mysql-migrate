@@ -17,6 +17,7 @@ from typing import List, Optional
 import concurrent
 import enum
 import logging
+import os
 import pymysql
 import shlex
 import signal
@@ -52,7 +53,14 @@ class MySQLMigration:
         self.mysqldump_proc: Optional[Popen] = None
         self.mysql_proc: Optional[Popen] = None
 
-        self.source = MySQLConnectionInfo.from_uri(source_uri, name="source")
+        self.source = MySQLConnectionInfo.from_uri(
+            source_uri,
+            name="source",
+            sslca=config.SOURCE_SSL_CA,
+            sslcert=config.SOURCE_SSL_CERT,
+            sslkey=config.SOURCE_SSL_KEY
+        )
+
         self.target = MySQLConnectionInfo.from_uri(target_uri, name="target")
         self.target_master = MySQLConnectionInfo.from_uri(
             target_master_uri, name="target master"
@@ -160,6 +168,8 @@ class MySQLMigration:
             conn_infos.append(self.target_master)
 
         for conn_info in conn_infos:
+            LOGGER.debug("conn_info.name :[%s]", conn_info.name)
+
             try:
                 with conn_info.cur():
                     pass
@@ -198,6 +208,13 @@ class MySQLMigration:
             if row_format.upper() != "ROW":
                 raise UnsupportedBinLogFormatException(f"Unsupported binary log format: {row_format}, only ROW is supported")
 
+    def _check_ssl_files(self):
+        if not (config.SOURCE_SSL_CA is None and config.SOURCE_SSL_CERT is None and config.SOURCE_SSL_KEY is None):
+            if not (os.path.exists(config.SOURCE_SSL_CA) and os.path.exists(config.SOURCE_SSL_CERT) and
+                    os.path.exists(config.SOURCE_SSL_KEY)):
+                LOGGER.debug("SSL files:[%s],[%s],[%s]", config.SOURCE_SSL_CA, config.SOURCE_SSL_CERT, config.SOURCE_SSL_KEY)
+                raise WrongMigrationConfigurationException("SSL files error!")
+
     def run_checks(
         self,
         force_method: Optional[MySQLMigrateMethod] = None,
@@ -220,6 +237,7 @@ class MySQLMigration:
             )
             migration_method = MySQLMigrateMethod.dump
 
+        self._check_ssl_files()
         self._check_connections()
         self._check_databases_count()
         if dbs_max_total_size is not None:

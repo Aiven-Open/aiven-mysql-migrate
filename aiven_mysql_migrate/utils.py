@@ -6,8 +6,12 @@ from typing import List, Optional, AnyStr, Dict
 from urllib.parse import parse_qs, urlparse
 
 import contextlib
+import logging
 import pymysql
 import re
+import urllib
+
+LOGGER = logging.getLogger(__name__)
 
 DEFAULT_MYSQL_PORT = 3306
 ALLOWED_OPTIONS = {"ssl-mode"}
@@ -31,6 +35,9 @@ class MySQLConnectionInfo:
     username: str
     password: str
     ssl: Optional[bool] = True
+    sslca: Optional[str] = None
+    sslcert: Optional[str] = None
+    sslkey: Optional[str] = None
 
     name: Optional[str] = None
 
@@ -38,7 +45,13 @@ class MySQLConnectionInfo:
     _global_grants: Optional[List[str]] = None
 
     @staticmethod
-    def from_uri(uri: str, name: Optional[str] = None):
+    def from_uri(
+        uri: str,
+        name: Optional[str] = None,
+        sslca: Optional[str] = None,
+        sslcert: Optional[str] = None,
+        sslkey: Optional[str] = None
+    ):
         try:
             res = urlparse(uri, scheme="mysql")
             if res.scheme != "mysql" or not res.username or not res.password or not res.hostname:
@@ -56,9 +69,18 @@ class MySQLConnectionInfo:
         MySQLConnectionInfo._validate_options(options)
 
         ssl = not (options and options.get("ssl-mode", ["DISABLE"]) == ["DISABLE"])
+
         return MySQLConnectionInfo(
-            hostname=res.hostname, port=port, username=res.username, password=res.password, ssl=ssl, name=name
-        )
+            hostname=res.hostname,
+            port=port,
+            username=res.username,
+            password=res.password,
+            ssl=ssl,
+            sslca=sslca,
+            sslcert=sslcert,
+            sslkey=sslkey,
+            name=name
+            )
 
     @staticmethod
     def _validate_options(options: Dict[str, List[AnyStr]]) -> None:
@@ -72,7 +94,16 @@ class MySQLConnectionInfo:
 
     def to_uri(self):
         ssl_mode = "DISABLE" if not self.ssl else "REQUIRE"
-        return f"mysql://{self.username}:{self.password}@{self.hostname}:{self.port}/?ssl-mode={ssl_mode}"
+
+        ssl_params = {
+            "ssl-ca": self.sslca,
+            "ssl-cert": self.sslcert,
+            "ssl-key": self.sslkey
+        }
+        ssl_auth = urllib.parse.urlencode(ssl_params) \
+            if self.sslca and self.sslcert and self.sslcert else ""
+        LOGGER.debug("ssl_auth:[%s]]", ssl_auth)
+        return f"mysql://{self.username}:{self.password}@{self.hostname}:{self.port}/?ssl-mode={ssl_mode}{ssl_auth}"
 
     def repr(self):
         return self.name
@@ -81,6 +112,9 @@ class MySQLConnectionInfo:
         ssl = None
         if self.ssl:
             ssl = {"require": True}
+
+        LOGGER.debug("connect [%s]- sslca:[%s], sslcert:[%s], sslkey:[%s]", self.name, self.sslca, self.sslcert, self.sslkey)
+
         return pymysql.connect(
             charset="utf8mb4",
             connect_timeout=config.MYSQL_CONNECTION_TIMEOUT,
@@ -90,6 +124,9 @@ class MySQLConnectionInfo:
             read_timeout=config.MYSQL_READ_TIMEOUT,
             port=self.port,
             ssl=ssl,
+            ssl_ca=self.sslca,
+            ssl_cert=self.sslcert,
+            ssl_key=self.sslkey,
             user=self.username,
             write_timeout=config.MYSQL_WRITE_TIMEOUT,
         )

@@ -73,6 +73,12 @@ The following environment variables are used by migration script:
 * `TARGET_SERVICE_URI` - service URI to the target MySQL database with admin credentials, which will be used for dump import.
 * `TARGET_MASTER_SERVICE_URI` - service URI for managing replication while migrating, omitting this variable will
 lead to fall-back to dump solution.
+SOURCE_SSL_* are optional, when provided it uses client certificate authentication.  
+* `SOURCE_SSL_CA` - The path name of the Certificate Authority (CA) certificate file in PEM format.
+* `SOURCE_SSL_CERT` - The path name of the server SSL public key certificate file in PEM format.
+* `SOURCE_SSL_KEY` - The path name of the server SSL private key file in PEM format.
+
+
 
 Environment variable are used here instead of usual arguments so that it's not possible to see credentials in the list
 of long-running processes. As for the `mysqldump/mysql` subprocesses they won't be visible, because they are hidden by
