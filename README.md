@@ -17,11 +17,11 @@ The aim of this tool is to help migrate MySQL servers from one place to another.
     Pre-conditions:
     * The source database should be in >= 5.7 and <= 8.0
     * The target database should have at least version 8.0
-    * All databases have the same engine - InnoDB
+    * All tables must use the InnoDB engine (See https://dev.mysql.com/doc/refman/5.6/en/converting-tables-to-innodb.html for conversion process if needed)
     * `gtid_mode` is `ON` on both the source and the target
     * Master user for replication management is specified (via `TARGET_MASTER_SERVICE_URI`)
     * User on the source database has enough permissions to create a replication user and read data
-    * `server_id` on the source and the target do not overlap
+    * `server_id` on the source and the target must not overlap (`server_id` equals 1 by default if not configured. See https://dev.mysql.com/doc/refman/8.0/en/replication-options-replica.html for more info)
 
     If one of the pre-conditions is not met, the migration is falling back to the second method `mysqldump`
 
