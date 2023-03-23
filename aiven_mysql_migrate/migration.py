@@ -12,10 +12,11 @@ from concurrent import futures
 from distutils.version import LooseVersion
 from pymysql.constants.ER import HANDSHAKE_ERROR
 from subprocess import Popen
-from typing import List, Optional
+from typing import List, Optional, TextIO
 
 import concurrent
 import enum
+import json
 import logging
 import pymysql
 import shlex
@@ -47,7 +48,8 @@ class MySQLMigration:
         target_uri: str,
         target_master_uri: Optional[str],
         filter_dbs: Optional[str] = None,
-        privilege_check_user: Optional[str] = None
+        privilege_check_user: Optional[str] = None,
+        output_meta_file: Optional[TextIO] = None,
     ):
         self.mysqldump_proc: Optional[Popen] = None
         self.mysql_proc: Optional[Popen] = None
@@ -67,6 +69,7 @@ class MySQLMigration:
         self.privilege_check_user = None
         if privilege_check_user:
             self.privilege_check_user = PrivilegeCheckUser.parse(privilege_check_user)
+        self.output_meta_file = output_meta_file
 
     def setup_signal_handlers(self):
         signal.signal(signal.SIGINT, self._stop_migration)
@@ -371,6 +374,10 @@ class MySQLMigration:
 
     def _set_gtid(self, gtid: str):
         LOGGER.info("GTID from the dump is `%s`", gtid)
+
+        if self.output_meta_file:
+            self.output_meta_file.write(json.dumps({"dump_gtids": gtid}))
+            self.output_meta_file.close()
 
         with self.target_master.cur() as cur:
             # Check which of the source GTIDs are not yet applied - needed in case of running migration again on top

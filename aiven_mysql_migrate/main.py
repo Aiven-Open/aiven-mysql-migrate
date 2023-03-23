@@ -51,6 +51,13 @@ def main(args=None, *, app="mysql_migrate"):
         default=-1,
         help="Max total size of databases to be migrated, ignored by default",
     )
+    parser.add_argument(
+        "--output-meta-file",
+        type=argparse.FileType("w"),
+        required=False,
+        default=None,
+        help="Output file which includes metadata such as dump GTIDs (for replication method only) in JSON format.",
+    )
     args = parser.parse_args(args)
     setup_logging(debug=args.debug)
 
@@ -63,6 +70,7 @@ def main(args=None, *, app="mysql_migrate"):
         target_master_uri=config.TARGET_MASTER_SERVICE_URI,
         filter_dbs=args.filter_dbs,
         privilege_check_user=args.privilege_check_user,
+        output_meta_file=args.output_meta_file,
     )
     migration.setup_signal_handlers()
 
