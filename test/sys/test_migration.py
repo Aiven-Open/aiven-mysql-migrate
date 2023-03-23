@@ -4,8 +4,10 @@ from aiven_mysql_migrate.exceptions import DatabaseTooLargeException, Replicatio
 from aiven_mysql_migrate.migration import MySQLMigrateMethod, MySQLMigration
 from aiven_mysql_migrate.utils import MySQLConnectionInfo
 from contextlib import nullcontext as does_not_raise
+from pathlib import Path
 from pytest import fixture, mark
 
+import json
 import logging
 import pytest
 import random
@@ -48,23 +50,34 @@ def my_wait(host, ssl=True, retries=MYSQL_WAIT_RETRIES) -> MySQLConnectionInfo:
         (my_wait("mysql80-src-2"), my_wait("mysql80-dst-2")),
     ]
 )
-def test_migration_replication(src, dst, db_name):
+def test_migration_replication(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, db_name: str, tmp_path: Path) -> None:
+    output_meta_file_path = tmp_path / "meta.json"
     with src.cur() as cur:
         cur.execute(f"CREATE DATABASE {db_name}")
         cur.execute(f"USE {db_name}")
         cur.execute("CREATE TABLE test (ID TEXT)")
         cur.execute("INSERT INTO test (ID) VALUES (%s)", ["test_data"])
         cur.execute("COMMIT")
+        cur.execute("SELECT @@GLOBAL.SERVER_UUID AS UUID")
+        server_uuid = cur.fetchone()["UUID"]
 
-    migration = MySQLMigration(
-        source_uri=src.to_uri(),
-        target_uri=dst.to_uri(),
-        target_master_uri=dst.to_uri(),
-        privilege_check_user="root@%",
-    )
-    method = migration.run_checks()
-    assert method == MySQLMigrateMethod.replication
-    migration.start(migration_method=method, seconds_behind_master=0)
+    with output_meta_file_path.open("w") as output_meta_file:
+        migration = MySQLMigration(
+            source_uri=src.to_uri(),
+            target_uri=dst.to_uri(),
+            target_master_uri=dst.to_uri(),
+            privilege_check_user="root@%",
+            output_meta_file=output_meta_file,
+        )
+        method = migration.run_checks()
+        assert method == MySQLMigrateMethod.replication
+        migration.start(migration_method=method, seconds_behind_master=0)
+
+    assert output_meta_file_path.exists()
+    with output_meta_file_path.open("r") as meta_file:
+        meta = json.loads(meta_file.read())
+    assert "dump_gtids" in meta
+    assert server_uuid in meta["dump_gtids"]
 
     with dst.cur() as cur:
         cur.execute(f"SELECT ID FROM {db_name}.test")
@@ -89,7 +102,7 @@ def test_migration_replication(src, dst, db_name):
 @mark.parametrize("src,dst", [
     (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3")),
 ])
-def test_migration_fallback(src, dst, db_name):
+def test_migration_fallback(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, db_name: str) -> None:
     with src.cur() as cur:
         cur.execute(f"CREATE DATABASE {db_name}")
         cur.execute(f"USE {db_name}")
