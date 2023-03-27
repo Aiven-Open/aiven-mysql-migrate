@@ -1,8 +1,7 @@
-from typing import Optional, Type
-
 from aiven_mysql_migrate.exceptions import WrongMigrationConfigurationException
-from aiven_mysql_migrate.utils import MySQLDumpProcessor, MySQLConnectionInfo
+from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor
 from pytest import mark, raises
+from typing import Optional, Type
 
 
 @mark.parametrize(
@@ -127,9 +126,9 @@ def test_mysql_connection_info_to_uri(uri: str, expected: str) -> None:
     ],
 )
 def test_mysql_connection_info_from_uri_password_length(
-        password_length: int,
-        template_char: str,
-        exception_class: Optional[Type[Exception]],
+    password_length: int,
+    template_char: str,
+    exception_class: Optional[Type[Exception]],
 ) -> None:
     uri = "mysql://<user>:{}@<ip>:1234/".format(template_char * password_length)
     if exception_class is not None:
