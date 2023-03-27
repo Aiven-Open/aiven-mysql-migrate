@@ -3,21 +3,23 @@ from aiven_mysql_migrate import config
 from aiven_mysql_migrate.exceptions import (
     DatabaseTooLargeException, EndpointConnectionException, GTIDModeDisabledException, MissingReplicationGrants,
     MySQLDumpException, MySQLImportException, NothingToMigrateException, ReplicaSetupException,
-    ReplicationNotAvailableException, ServerIdsOverlappingException, TooManyDatabasesException,
+    ReplicationNotAvailableException, ServerIdsOverlappingException, SSLNotSupportedException, TooManyDatabasesException,
     UnsupportedBinLogFormatException, UnsupportedMySQLEngineException, UnsupportedMySQLVersionException,
-    WrongMigrationConfigurationException, SSLNotSupportedException
+    WrongMigrationConfigurationException
 )
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, PrivilegeCheckUser, select_global_var
 from concurrent import futures
 from distutils.version import LooseVersion
+from pathlib import Path
 from pymysql.constants.ER import HANDSHAKE_ERROR
 from subprocess import Popen
-from typing import List, Optional, TextIO
+from typing import List, Optional
 
 import concurrent
 import enum
 import json
 import logging
+import os
 import pymysql
 import shlex
 import signal
@@ -49,7 +51,7 @@ class MySQLMigration:
         target_master_uri: Optional[str],
         filter_dbs: Optional[str] = None,
         privilege_check_user: Optional[str] = None,
-        output_meta_file: Optional[TextIO] = None,
+        output_meta_file: Optional[Path] = None,
     ):
         self.mysqldump_proc: Optional[Popen] = None
         self.mysql_proc: Optional[Popen] = None
@@ -375,10 +377,6 @@ class MySQLMigration:
     def _set_gtid(self, gtid: str):
         LOGGER.info("GTID from the dump is `%s`", gtid)
 
-        if self.output_meta_file:
-            self.output_meta_file.write(json.dumps({"dump_gtids": gtid}))
-            self.output_meta_file.close()
-
         with self.target_master.cur() as cur:
             # Check which of the source GTIDs are not yet applied - needed in case of running migration again on top
             # of finished one
@@ -486,8 +484,17 @@ class MySQLMigration:
         for db in self.databases:
             LOGGER.info("\t%s", db)
 
+        if self.output_meta_file:
+            assert os.access(self.output_meta_file.parent, os.W_OK), f"Meta file {self.output_meta_file} is not writable"
+            self.output_meta_file.unlink(missing_ok=True)  # type: ignore
+
         gtid = self._migrate_data(migration_method)
         LOGGER.info("Migration of dump data has finished, GTID value from the dump: `%s`", gtid)
+
+        if self.output_meta_file:
+            with self.output_meta_file.open("w") as meta_file:
+                meta_file.write(json.dumps({"dump_gtids": gtid if gtid else ""}))
+                meta_file.close()
 
         if migration_method == MySQLMigrateMethod.replication:
             LOGGER.info("Setting up replication to the target DB")

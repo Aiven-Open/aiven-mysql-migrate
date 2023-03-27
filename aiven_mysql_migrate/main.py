@@ -1,6 +1,7 @@
 # Copyright (c) 2020 Aiven, Helsinki, Finland. https://aiven.io/
 from aiven_mysql_migrate import config
 from aiven_mysql_migrate.migration import MySQLMigrateMethod, MySQLMigration
+from pathlib import Path
 
 import logging
 
@@ -53,7 +54,7 @@ def main(args=None, *, app="mysql_migrate"):
     )
     parser.add_argument(
         "--output-meta-file",
-        type=argparse.FileType("w"),
+        type=Path,
         required=False,
         default=None,
         help="Output file which includes metadata such as dump GTIDs (for replication method only) in JSON format.",

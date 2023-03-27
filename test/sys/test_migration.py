@@ -1,6 +1,7 @@
 from aiven_mysql_migrate.config import IGNORE_SYSTEM_DATABASES
-from aiven_mysql_migrate.exceptions import DatabaseTooLargeException, ReplicationNotAvailableException, \
-    SSLNotSupportedException
+from aiven_mysql_migrate.exceptions import (
+    DatabaseTooLargeException, ReplicationNotAvailableException, SSLNotSupportedException
+)
 from aiven_mysql_migrate.migration import MySQLMigrateMethod, MySQLMigration
 from aiven_mysql_migrate.utils import MySQLConnectionInfo
 from contextlib import nullcontext as does_not_raise
@@ -51,7 +52,7 @@ def my_wait(host, ssl=True, retries=MYSQL_WAIT_RETRIES) -> MySQLConnectionInfo:
     ]
 )
 def test_migration_replication(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, db_name: str, tmp_path: Path) -> None:
-    output_meta_file_path = tmp_path / "meta.json"
+    output_meta_file = tmp_path / "meta.json"
     with src.cur() as cur:
         cur.execute(f"CREATE DATABASE {db_name}")
         cur.execute(f"USE {db_name}")
@@ -61,20 +62,19 @@ def test_migration_replication(src: MySQLConnectionInfo, dst: MySQLConnectionInf
         cur.execute("SELECT @@GLOBAL.SERVER_UUID AS UUID")
         server_uuid = cur.fetchone()["UUID"]
 
-    with output_meta_file_path.open("w") as output_meta_file:
-        migration = MySQLMigration(
-            source_uri=src.to_uri(),
-            target_uri=dst.to_uri(),
-            target_master_uri=dst.to_uri(),
-            privilege_check_user="root@%",
-            output_meta_file=output_meta_file,
-        )
-        method = migration.run_checks()
-        assert method == MySQLMigrateMethod.replication
-        migration.start(migration_method=method, seconds_behind_master=0)
+    migration = MySQLMigration(
+        source_uri=src.to_uri(),
+        target_uri=dst.to_uri(),
+        target_master_uri=dst.to_uri(),
+        privilege_check_user="root@%",
+        output_meta_file=output_meta_file,
+    )
+    method = migration.run_checks()
+    assert method == MySQLMigrateMethod.replication
+    migration.start(migration_method=method, seconds_behind_master=0)
 
-    assert output_meta_file_path.exists()
-    with output_meta_file_path.open("r") as meta_file:
+    assert output_meta_file.exists()
+    with output_meta_file.open("r") as meta_file:
         meta = json.loads(meta_file.read())
     assert "dump_gtids" in meta
     assert server_uuid in meta["dump_gtids"]

@@ -2,7 +2,7 @@
 from aiven_mysql_migrate import config
 from aiven_mysql_migrate.exceptions import WrongMigrationConfigurationException
 from dataclasses import dataclass
-from typing import List, Optional, AnyStr, Dict
+from typing import AnyStr, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
 import contextlib
