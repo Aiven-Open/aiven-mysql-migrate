@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import pymysql
+import resource
 import shlex
 import signal
 import subprocess
@@ -327,6 +328,9 @@ class MySQLMigration:
             stdin=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True
         )
+
+        # Disallow creating child processes in migration target when this runs as non-root user.
+        resource.prlimit(self.mysql_proc.pid, resource.RLIMIT_NPROC, (0, 0))
 
         # make mypy happy
         assert self.mysqldump_proc.stdout
