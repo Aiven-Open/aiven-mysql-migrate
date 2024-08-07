@@ -100,12 +100,12 @@ def test_mysql_connection_info_from_uri(uri: str, exception_class: Optional[Type
 @mark.parametrize(
     "uri, expected",
     [
-        ("mysql://<user>:<pwd>@<ip>:1234/", "mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRED"),
-        ("mysql://<user>:<pwd>@<ip>:1234/?", "mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRED"),
-        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=DISABLED", "mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=DISABLED"),
-        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRED", "mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=REQUIRED"),
+        ("mysql://user:pwd@<ip>:1234/", "mysql://user:pwd@<ip>:1234/?ssl-mode=REQUIRED"),
+        ("mysql://user:pwd@<ip>:1234/?", "mysql://user:pwd@<ip>:1234/?ssl-mode=REQUIRED"),
+        ("mysql://user:pwd@<ip>:1234/?ssl-mode=DISABLED", "mysql://user:pwd@<ip>:1234/?ssl-mode=DISABLED"),
+        ("mysql://user:pwd@<ip>:1234/?ssl-mode=REQUIRED", "mysql://user:pwd@<ip>:1234/?ssl-mode=REQUIRED"),
         # previously documented legacy value
-        ("mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=DISABLE", "mysql://<user>:<pwd>@<ip>:1234/?ssl-mode=DISABLED"),
+        ("mysql://user:pwd@<ip>:1234/?ssl-mode=DISABLE", "mysql://user:pwd@<ip>:1234/?ssl-mode=DISABLED"),
     ],
 )
 def test_mysql_connection_info_to_uri(uri: str, expected: str) -> None:
@@ -136,3 +136,11 @@ def test_mysql_connection_info_from_uri_password_length(
             MySQLConnectionInfo.from_uri(uri)
     else:
         MySQLConnectionInfo.from_uri(uri)
+
+
+def test_mysql_connection_info_from_uri_unquote_username_and_password() -> None:
+    uri = "mysql://test%40example.com:%40%26%20%7B@<ip>:1234/?ssl-mode=DISABLED"
+    conn_info = MySQLConnectionInfo.from_uri(uri)
+    assert conn_info.username == "test@example.com"
+    assert conn_info.password == "@& {"
+    assert conn_info.to_uri() == uri

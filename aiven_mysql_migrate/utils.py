@@ -3,7 +3,7 @@ from aiven_mysql_migrate import config
 from aiven_mysql_migrate.exceptions import WrongMigrationConfigurationException
 from dataclasses import dataclass
 from typing import AnyStr, Dict, List, Optional
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import contextlib
 import pymysql
@@ -54,7 +54,8 @@ class MySQLConnectionInfo:
         except ValueError as e:
             raise WrongMigrationConfigurationException(f"{uri!r} invalid port") from e
 
-        if len(res.password.encode()) > MAX_PASSWORD_LENGTH:
+        password = unquote(res.password)
+        if len(password.encode()) > MAX_PASSWORD_LENGTH:
             raise WrongMigrationConfigurationException("The password for the replication user must not exceed 32 characters")
 
         options = parse_qs(res.query)
@@ -62,7 +63,12 @@ class MySQLConnectionInfo:
 
         ssl = not (options and options.get("ssl-mode", ["DISABLED"]) in (["DISABLE"], ["DISABLED"]))
         return MySQLConnectionInfo(
-            hostname=res.hostname, port=port, username=res.username, password=res.password, ssl=ssl, name=name
+            hostname=res.hostname,
+            port=port,
+            username=unquote(res.username),
+            password=password,
+            ssl=ssl,
+            name=name
         )
 
     @staticmethod
@@ -78,7 +84,7 @@ class MySQLConnectionInfo:
 
     def to_uri(self):
         ssl_mode = "DISABLED" if not self.ssl else "REQUIRED"
-        return f"mysql://{self.username}:{self.password}@{self.hostname}:{self.port}/?ssl-mode={ssl_mode}"
+        return f"mysql://{quote(self.username)}:{quote(self.password)}@{self.hostname}:{self.port}/?ssl-mode={ssl_mode}"
 
     def repr(self):
         return self.name
