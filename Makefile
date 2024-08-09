@@ -52,10 +52,10 @@ test: $(generated)
 
 .ONESHELL: systest
 systest:
-	docker-compose -f docker-compose.test.yaml up -d --build && \
-	docker-compose -f docker-compose.test.yaml run test python -m pytest -v test/sys/; \
+	docker compose -f docker-compose.test.yaml up -d --build && \
+	docker compose -f docker-compose.test.yaml run test python -m pytest -v test/sys/; \
 	code=$$? && \
-	docker-compose -f docker-compose.test.yaml down --rmi all --remove-orphans --volumes && \
+	docker compose -f docker-compose.test.yaml down --rmi all --remove-orphans --volumes && \
 	exit $$code
 
 clean:
