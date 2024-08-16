@@ -68,7 +68,7 @@ class MySQLConnectionInfo:
             username=unquote(res.username),
             password=password,
             ssl=ssl,
-            name=name
+            name=name,
         )
 
     @staticmethod
