@@ -1,7 +1,9 @@
 # Copyright (c) 2020 Aiven, Helsinki, Finland. https://aiven.io/
 from aiven_mysql_migrate import config
+from aiven_mysql_migrate.exceptions import NothingToMigrateException
 from aiven_mysql_migrate.migration import MySQLMigrateMethod, MySQLMigration
 from pathlib import Path
+from typing import Optional, Sequence
 
 import logging
 
@@ -14,7 +16,7 @@ def setup_logging(*, debug=False):
     logging.basicConfig(level=log_level, format=log_format)
 
 
-def main(args=None, *, app="mysql_migrate"):
+def main(args: Sequence[str] = None, *, app: str = "mysql_migrate") -> Optional[str]:
     """Migrate MySQL database from source to target, take configuration from CONFIG"""
     import argparse
     parser = argparse.ArgumentParser(description="MySQL migration tool.", prog=app)
@@ -59,8 +61,13 @@ def main(args=None, *, app="mysql_migrate"):
         default=None,
         help="Output file which includes metadata such as dump GTIDs (for replication method only) in JSON format.",
     )
-    args = parser.parse_args(args)
-    setup_logging(debug=args.debug)
+    parser.add_argument(
+        "--allow-source-without-dbs",
+        action="store_true",
+        help="Allow migrating from a source that has no migratable databases"
+    )
+    parsed_args = parser.parse_args(args)
+    setup_logging(debug=parsed_args.debug)
 
     assert config.SOURCE_SERVICE_URI, "SOURCE_SERVICE_URI is not specified"
     assert config.TARGET_SERVICE_URI, "TARGET_SERVICE_URI is not specified"
@@ -69,39 +76,46 @@ def main(args=None, *, app="mysql_migrate"):
         source_uri=config.SOURCE_SERVICE_URI,
         target_uri=config.TARGET_SERVICE_URI,
         target_master_uri=config.TARGET_MASTER_SERVICE_URI,
-        filter_dbs=args.filter_dbs,
-        privilege_check_user=args.privilege_check_user,
-        output_meta_file=args.output_meta_file,
+        filter_dbs=parsed_args.filter_dbs,
+        privilege_check_user=parsed_args.privilege_check_user,
+        output_meta_file=parsed_args.output_meta_file,
     )
     migration.setup_signal_handlers()
 
     LOGGER.info("MySQL migration from %s to %s", migration.source.hostname, migration.target.hostname)
 
     LOGGER.info("Starting pre-checks")
-    dbs_max_total_size = None if args.dbs_max_total_size == -1 else args.dbs_max_total_size
-    migration_method = migration.run_checks(force_method=args.force_method, dbs_max_total_size=dbs_max_total_size)
-    expected_method = MySQLMigrateMethod.replication if args.force_method is None else args.force_method
+    dbs_max_total_size = None if parsed_args.dbs_max_total_size == -1 else parsed_args.dbs_max_total_size
+    try:
+        migration_method = migration.run_checks(force_method=parsed_args.force_method, dbs_max_total_size=dbs_max_total_size)
+    except NothingToMigrateException:
+        if not parsed_args.allow_source_without_dbs:
+            raise
 
+        LOGGER.warning("No databases to migrate.")
+        return None
+
+    expected_method = MySQLMigrateMethod.replication if parsed_args.force_method is None else parsed_args.force_method
     if migration_method == expected_method:
         LOGGER.info("All pre-checks passed successfully.")
     else:
         LOGGER.info("Not all pre-checks passed successfully. %s method is not available.", expected_method.capitalize())
         # We were unable to use the desired method so all we can do here is exit.
-        if args.force_method is not None:
+        if parsed_args.force_method is not None:
             return f"{expected_method.capitalize()} method is not available."
 
-    if args.validate_only:
+    if parsed_args.validate_only:
         return None
 
     LOGGER.info("Starting migration using method: %s", migration_method)
     migration.start(
         migration_method=migration_method,
-        seconds_behind_master=args.seconds_behind_master,
-        stop_replication=args.stop_replication,
+        seconds_behind_master=parsed_args.seconds_behind_master,
+        stop_replication=parsed_args.stop_replication,
     )
 
     LOGGER.info("Migration finished.")
-    if migration_method == MySQLMigrateMethod.replication and not args.stop_replication:
+    if migration_method == MySQLMigrateMethod.replication and not parsed_args.stop_replication:
         LOGGER.info("IMPORTANT: Replication is still running, make sure to stop it after switching to the target DB")
 
     return None

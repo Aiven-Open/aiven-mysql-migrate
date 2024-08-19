@@ -48,9 +48,8 @@ The tool requires `mysql-client` package 8.X, which can be installed from https:
 ## Usage
 ```
 mysql_migrate --help
-usage: mysql_migrate [-h] [-d] [-f FILTER_DBS] [--validate-only]
-                     [--seconds-behind-master SECONDS_BEHIND_MASTER]
-                     [--stop-replication]
+usage: mysql_migrate [-h] [-d] [-f FILTER_DBS] [--validate-only] [--seconds-behind-master SECONDS_BEHIND_MASTER] [--stop-replication] [--privilege-check-user PRIVILEGE_CHECK_USER] [--force-method FORCE_METHOD]
+                     [--dbs-max-total-size DBS_MAX_TOTAL_SIZE] [--output-meta-file OUTPUT_META_FILE] [--allow-source-without-dbs]
 
 MySQL migration tool.
 
@@ -65,7 +64,14 @@ optional arguments:
   --stop-replication    Stop replication, by default replication is left running
   --privilege-check-user PRIVILEGE_CHECK_USER
                         User to be used when replicating for privileges check (e.g. 'checker@%', must have REPLICATION_APPLIER grant)
-
+  --force-method FORCE_METHOD
+                        Force the migration method to be used as either replication or dump.
+  --dbs-max-total-size DBS_MAX_TOTAL_SIZE
+                        Max total size of databases to be migrated, ignored by default
+  --output-meta-file OUTPUT_META_FILE
+                        Output file which includes metadata such as dump GTIDs (for replication method only) in JSON format.
+  --allow-source-without-dbs
+                        Allow migrating from a source that has no migratable databases
 ```
 
 The following environment variables are used by migration script:

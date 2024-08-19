@@ -483,7 +483,9 @@ class MySQLMigration:
 
             time.sleep(check_interval)
 
-    def start(self, *, migration_method: MySQLMigrateMethod, seconds_behind_master: int, stop_replication: bool = False):
+    def start(
+        self, *, migration_method: MySQLMigrateMethod, seconds_behind_master: int, stop_replication: bool = False
+    ) -> None:
         LOGGER.info("Start migration of the following databases:")
         for db in self.databases:
             LOGGER.info("\t%s", db)
