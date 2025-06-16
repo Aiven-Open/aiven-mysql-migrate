@@ -400,7 +400,8 @@ class MySQLMigration:
         with self.target_master.cur() as cur:
             query = (
                 "CHANGE MASTER TO MASTER_HOST = %s, MASTER_PORT = %s, MASTER_USER = %s, MASTER_PASSWORD = %s, "
-                f"MASTER_AUTO_POSITION = 1, MASTER_SSL = {1 if self.source.ssl else 0}"
+                f"MASTER_AUTO_POSITION = 1, MASTER_SSL = {1 if self.source.ssl else 0}, "
+                "MASTER_SSL_VERIFY_SERVER_CERT = 0, MASTER_SSL_CA = '', MASTER_SSL_CAPATH = ''"
             )
             if LooseVersion(self.target.version) >= LooseVersion("8.0.19"):
                 query += ", REQUIRE_ROW_FORMAT = 1"
