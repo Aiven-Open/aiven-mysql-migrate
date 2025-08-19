@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68.2.2", "wheel", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aiven-mysql-migrate"
+dynamic = ["version"]
+description = "Aiven MySQL database migration tool"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Aiven", email = "support@aiven.io"}
+]
+maintainers = [
+    {name = "Aiven", email = "support@aiven.io"}
+]
+keywords = ["mysql", "migration", "database", "aiven"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: POSIX",
+]
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "pymysql>=0.10,<2",
+    "packaging>=21.0",
+    "looseversion>=1.3.0",
+]
+
+[project.urls]
+Homepage = "https://aiven.io/"
+Repository = "https://github.com/aiven/aiven-mysql-migrate"
+Documentation = "https://aiven.io/docs"
+"Bug Tracker" = "https://github.com/aiven/aiven-mysql-migrate/issues"
+
+[project.scripts]
+mysql_migrate = "aiven_mysql_migrate.main:main"
+
+[tool.setuptools.packages.find]
+exclude = ["test*"]
+
+[tool.setuptools_scm]
+write_to = "aiven_mysql_migrate/version.py"
+
+# Development dependencies
+[project.optional-dependencies]
+dev = [
+    "cryptography==45.0.6",
+    "flake8==7.3.0",
+    "isort==6.0.1",
+    "mypy==1.17.1",
+    "pylint==3.3.8",
+    "pytest==8.4.1",
+    "yapf==0.43.0",
+]

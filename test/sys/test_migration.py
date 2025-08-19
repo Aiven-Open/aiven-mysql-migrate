@@ -170,7 +170,7 @@ def test_database_size_check(src, dst, db_name):
     with src.cur() as cur:
         cur.execute(
             "SELECT TABLE_SCHEMA FROM INFORMATION_SCHEMA.TABLES "
-            "WHERE TABLE_SCHEMA NOT IN ({format_dbs})".format(format_dbs=", ".join(["%s"] * len(ignore_dbs))),
+            f"WHERE TABLE_SCHEMA NOT IN ({', '.join(['%s'] * len(ignore_dbs))})",
             tuple(ignore_dbs)
         )
         other_test_dbs = {table_schema["TABLE_SCHEMA"] for table_schema in cur.fetchall()}

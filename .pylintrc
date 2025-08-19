@@ -1,14 +1,6 @@
-[MASTER]
-load-plugins=pylint_quotes
-
-string-quote=double-avoid-escape
-triple-quote=double
-docstring-quote=double
-
 [MESSAGES CONTROL]
 disable=
     abstract-method,
-    bad-continuation,
     chained-comparison,  # R1716: Simplify chained comparison between the operands
     duplicate-code,
     fixme,
@@ -17,7 +9,6 @@ disable=
     missing-docstring,
     no-else-return,
     no-else-raise,
-    no-self-use,
     superfluous-parens,
     too-few-public-methods,
     too-many-ancestors,

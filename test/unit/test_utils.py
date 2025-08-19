@@ -132,7 +132,7 @@ def test_mysql_connection_info_from_uri_password_length(
     template_char: str,
     exception_class: Optional[Type[Exception]],
 ) -> None:
-    uri = "mysql://<user>:{}@<ip>:1234/".format(template_char * password_length)
+    uri = f"mysql://<user>:{template_char * password_length}@<ip>:1234/"
     if exception_class is not None:
         with raises(exception_class):
             MySQLConnectionInfo.from_uri(uri)
