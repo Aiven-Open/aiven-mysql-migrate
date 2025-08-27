@@ -16,7 +16,7 @@ def setup_logging(*, debug=False):
     logging.basicConfig(level=log_level, format=log_format)
 
 
-def main(args: Sequence[str] = None, *, app: str = "mysql_migrate") -> Optional[str]:
+def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Optional[str]:
     """Migrate MySQL database from source to target, take configuration from CONFIG"""
     import argparse
     parser = argparse.ArgumentParser(description="MySQL migration tool.", prog=app)

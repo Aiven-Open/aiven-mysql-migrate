@@ -1,14 +1,10 @@
 PYTHON ?= python3
+DOCKER ?= $(shell command -v docker || echo 'podman')
 PYTHON_SOURCE_DIRS = aiven_mysql_migrate/ test/
 PACKAGE_REQUIRES = "python3-PyMySQL"
 
-generated = aiven_mysql_migrate/version.py
 
-
-all: $(generated)
-
-aiven_mysql_migrate/version.py:
-	echo "__version__ = \"$(shell git describe)\"" > $@
+all: static-checks test
 
 build-dep-fedora:
 	sudo dnf -y install --best --allowerasing \
@@ -20,19 +16,19 @@ build-dep-fedora:
 		python3-yapf \
 		rpm-build
 
-flake8: $(generated)
+flake8:
 	$(PYTHON) -m flake8 $(PYTHON_SOURCE_DIRS)
 
-pylint: $(generated)
+pylint:
 	$(PYTHON) -m pylint --rcfile .pylintrc $(PYTHON_SOURCE_DIRS)
 
-mypy: $(generated)
+mypy:
 	$(PYTHON) -m mypy $(PYTHON_SOURCE_DIRS)
 
-isort: $(generated)
+isort:
 	$(PYTHON) -m isort --recursive $(PYTHON_SOURCE_DIRS)
 
-yapf: $(generated)
+yapf:
 	$(PYTHON) -m yapf --parallel --recursive --in-place $(PYTHON_SOURCE_DIRS)
 
 static-checks: flake8 pylint mypy
@@ -47,19 +43,16 @@ validate-style:
 	-rm $(CHANGES_BEFORE) $(CHANGES_AFTER)
 
 .PHONY: test systest
-test: $(generated)
+test:
 	$(PYTHON) -m pytest -v test/unit/
 
 .ONESHELL: systest
 systest:
-	docker compose -f docker-compose.test.yaml up -d --build && \
-	docker compose -f docker-compose.test.yaml run test python -m pytest -v test/sys/; \
+	$(DOCKER) compose -f docker-compose.test.yaml up -d --build && \
+	$(DOCKER) compose -f docker-compose.test.yaml run test python -m pytest -v test/sys/; \
 	code=$$? && \
-	docker compose -f docker-compose.test.yaml down --rmi all --remove-orphans --volumes && \
+	$(DOCKER) compose -f docker-compose.test.yaml down --rmi all --remove-orphans --volumes && \
 	exit $$code
-
-clean:
-	$(RM) aiven_mysql_migrate/version.py
 
 rpm:
 	$(PYTHON) setup.py bdist_rpm --requires $(PACKAGE_REQUIRES) && rm -rf build/

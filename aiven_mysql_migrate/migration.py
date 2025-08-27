@@ -9,7 +9,7 @@ from aiven_mysql_migrate.exceptions import (
 )
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, PrivilegeCheckUser, select_global_var
 from concurrent import futures
-from distutils.version import LooseVersion
+from looseversion import LooseVersion
 from pathlib import Path
 from pymysql.constants.ER import HANDSHAKE_ERROR
 from subprocess import Popen
@@ -40,7 +40,7 @@ class MySQLMigrateMethod(str, enum.Enum):
 class MySQLMigration:
     source: MySQLConnectionInfo
     target: MySQLConnectionInfo
-    target_master: MySQLConnectionInfo
+    target_master: MySQLConnectionInfo | None
 
     _databases: Optional[List[str]] = None
 
@@ -89,9 +89,8 @@ class MySQLMigration:
     def list_databases(self) -> List[str]:
         with self.source.cur() as cur:
             cur.execute(
-                "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME NOT IN ({format_dbs})".format(
-                    format_dbs=", ".join(["%s"] * len(self.ignore_dbs))
-                ), tuple(self.ignore_dbs)
+                "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA "
+                f"WHERE SCHEMA_NAME NOT IN ({', '.join(['%s'] * len(self.ignore_dbs))})", tuple(self.ignore_dbs)
             )
             return [row["SCHEMA_NAME"] for row in cur.fetchall()]
 
@@ -106,8 +105,8 @@ class MySQLMigration:
         LOGGER.info("Checking MySQL versions for replication support")
 
         if (
-            LooseVersion("5.7.0") <= LooseVersion(self.source.version) < LooseVersion("8.1")
-            and LooseVersion("8.0.0") <= LooseVersion(self.target.version) < LooseVersion("8.1")
+                LooseVersion("5.7.0") <= LooseVersion(self.source.version) < LooseVersion("8.1")
+                and LooseVersion("8.0.0") <= LooseVersion(self.target.version) < LooseVersion("8.1")
         ):
             LOGGER.info("\tSource - %s, target - %s -- OK", self.source.version, self.target.version)
         else:
@@ -135,9 +134,8 @@ class MySQLMigration:
         with self.source.cur() as cur:
             cur.execute(
                 "SELECT COUNT(DISTINCT(ENGINE)) AS count FROM INFORMATION_SCHEMA.TABLES "
-                "WHERE TABLE_SCHEMA IN ({format_dbs}) AND ENGINE IS NOT NULL AND UPPER(ENGINE) != 'INNODB'".format(
-                    format_dbs=",".join(["%s"] * len(self.databases))
-                ), tuple(self.databases)
+                f"WHERE TABLE_SCHEMA IN ({','.join(['%s'] * len(self.databases))}) "
+                "AND ENGINE IS NOT NULL AND UPPER(ENGINE) != 'INNODB'", tuple(self.databases)
             )
             res = cur.fetchone()
             if not res["count"] == 0:
@@ -191,7 +189,7 @@ class MySQLMigration:
         with self.source.cur() as cur:
             cur.execute(
                 "SELECT SUM(DATA_LENGTH + INDEX_LENGTH) AS size FROM INFORMATION_SCHEMA.TABLES "
-                "WHERE TABLE_SCHEMA NOT IN ({format_dbs})".format(format_dbs=", ".join(["%s"] * len(self.ignore_dbs))),
+                f"WHERE TABLE_SCHEMA NOT IN ({', '.join(['%s'] * len(self.ignore_dbs))})",
                 tuple(self.ignore_dbs)
             )
             source_size = cur.fetchone()["size"] or 0
@@ -233,7 +231,6 @@ class MySQLMigration:
 
         if self.source.version < LooseVersion("8.0.0") or self.target.version < LooseVersion("8.0.0"):
             self.skip_column_stats = True
-
         if migration_method == MySQLMigrateMethod.dump:
             return migration_method
 
@@ -380,7 +377,7 @@ class MySQLMigration:
 
     def _set_gtid(self, gtid: str):
         LOGGER.info("GTID from the dump is `%s`", gtid)
-
+        assert self.target_master is not None
         with self.target_master.cur() as cur:
             # Check which of the source GTIDs are not yet applied - needed in case of running migration again on top
             # of finished one
@@ -424,9 +421,7 @@ class MySQLMigration:
                 # even though it's in the list of databases to ignore. However REPLICATE_WILD_IGNORE_TABLE works
                 # properly, so it's possible to specify `mysql.%` to be ignored and in this case it does not matter
                 # from which context statement is executed.
-                "CHANGE REPLICATION FILTER REPLICATE_WILD_IGNORE_TABLE = ({format_ignore_tables})".format(
-                    format_ignore_tables=", ".join("%s" for _ in self.ignore_dbs)
-                ),
+                f"CHANGE REPLICATION FILTER REPLICATE_WILD_IGNORE_TABLE = ({', '.join('%s' for _ in self.ignore_dbs)})",
                 [f"{db}.%" for db in self.ignore_dbs]
             )
             cur.execute("START SLAVE")
