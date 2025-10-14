@@ -1,5 +1,6 @@
 .idea/
 .mypy_cache/
+.cursor/
 *.egg-info/
 __pycache__/
 dist/
