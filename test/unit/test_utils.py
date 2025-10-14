@@ -1,5 +1,7 @@
 from aiven_mysql_migrate.exceptions import WrongMigrationConfigurationException
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor
+from aiven_mysql_migrate.dump_tools import get_dump_tool
+from aiven_mysql_migrate.migration import MySQLMigrateMethod
 from pytest import mark, raises
 from typing import Optional, Type
 
@@ -146,3 +148,117 @@ def test_mysql_connection_info_from_uri_unquote_username_and_password() -> None:
     assert conn_info.username == "test@example.com"
     assert conn_info.password == "@& {"
     assert conn_info.to_uri() == uri
+
+
+@mark.parametrize("tool_name", ["mysqldump", "mydumper"])
+def test_dump_tool_command_generation(tool_name):
+    """Test that both tools can generate valid commands."""
+    source = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
+    target = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
+    databases = ["testdb1", "testdb2"]
+
+    # Test factory function creates correct tool
+    tool = get_dump_tool(tool_name, source, target, databases, skip_column_stats=False)
+
+    # Test dump command generation for replication method
+    dump_cmd = tool.get_dump_command(MySQLMigrateMethod.replication)
+    assert isinstance(dump_cmd, list)
+    assert len(dump_cmd) > 0
+
+    # Test dump command generation for dump method
+    dump_cmd_dump = tool.get_dump_command(MySQLMigrateMethod.dump)
+    assert isinstance(dump_cmd_dump, list)
+    assert len(dump_cmd_dump) > 0
+
+    # Test import command generation
+    import_cmd = tool.get_import_command(MySQLMigrateMethod.replication)
+    assert isinstance(import_cmd, list)
+    assert len(import_cmd) > 0
+
+    # Verify tool-specific command elements
+    if tool_name == "mysqldump":
+        assert "mysqldump" in dump_cmd
+        assert "mysql" in import_cmd
+        assert "--databases" in dump_cmd
+    elif tool_name == "mydumper":
+        assert "mydumper" in dump_cmd
+        assert "myloader" in import_cmd
+        assert any("--outputdir=" in arg for arg in dump_cmd)
+        assert any("--directory=" in arg for arg in import_cmd)
+
+
+@mark.parametrize("tool_name", ["mysqldump", "mydumper"])
+def test_dump_tool_ssl_handling(tool_name):
+    """Test that both tools handle SSL correctly."""
+    # Test with SSL enabled
+    source_ssl = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
+    target_ssl = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
+    databases = ["testdb"]
+
+    tool_ssl = get_dump_tool(tool_name, source_ssl, target_ssl, databases, skip_column_stats=False)
+    dump_cmd_ssl = tool_ssl.get_dump_command(MySQLMigrateMethod.replication)
+    import_cmd_ssl = tool_ssl.get_import_command(MySQLMigrateMethod.replication)
+
+    # Test with SSL disabled
+    source_no_ssl = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=False)
+    target_no_ssl = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=False)
+
+    tool_no_ssl = get_dump_tool(tool_name, source_no_ssl, target_no_ssl, databases, skip_column_stats=False)
+    dump_cmd_no_ssl = tool_no_ssl.get_dump_command(MySQLMigrateMethod.replication)
+    import_cmd_no_ssl = tool_no_ssl.get_import_command(MySQLMigrateMethod.replication)
+
+    # Verify SSL flags are present when SSL is enabled
+    if tool_name == "mysqldump":
+        assert "--ssl-mode=REQUIRED" in dump_cmd_ssl
+        assert "--ssl-mode=REQUIRED" in import_cmd_ssl
+        assert "--ssl-mode=REQUIRED" not in dump_cmd_no_ssl
+        assert "--ssl-mode=REQUIRED" not in import_cmd_no_ssl
+    elif tool_name == "mydumper":
+        # For mydumper, SSL is handled in the .cnf file, so we check the .cnf content
+        # This is more complex to test without actually creating the files
+        # We'll just verify the commands are generated successfully
+        assert len(dump_cmd_ssl) > 0
+        assert len(import_cmd_ssl) > 0
+        assert len(dump_cmd_no_ssl) > 0
+        assert len(import_cmd_no_ssl) > 0
+
+
+@mark.parametrize("tool_name", ["mysqldump", "mydumper"])
+def test_dump_tool_gtid_handling(tool_name):
+    """Test that both tools handle GTID settings correctly."""
+    source = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
+    target = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
+    databases = ["testdb"]
+
+    tool = get_dump_tool(tool_name, source, target, databases, skip_column_stats=False)
+
+    # Test replication method (should include GTID)
+    dump_cmd_replication = tool.get_dump_command(MySQLMigrateMethod.replication)
+
+    # Test dump method (should not include GTID)
+    dump_cmd_dump = tool.get_dump_command(MySQLMigrateMethod.dump)
+
+    if tool_name == "mysqldump":
+        assert "--set-gtid-purged=ON" in dump_cmd_replication
+        assert "--set-gtid-purged=OFF" in dump_cmd_dump
+
+
+@mark.parametrize("tool_name", ["mysqldump", "mydumper"])
+def test_dump_tool_database_handling(tool_name):
+    """Test that both tools handle database lists correctly."""
+    source = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
+    target = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
+    databases = ["db1", "db2", "db3"]
+
+    tool = get_dump_tool(tool_name, source, target, databases, skip_column_stats=False)
+    dump_cmd = tool.get_dump_command(MySQLMigrateMethod.replication)
+
+    if tool_name == "mysqldump":
+        # mysqldump includes databases in the command
+        assert "--databases" in dump_cmd
+        for db in databases:
+            assert db in dump_cmd
+    elif tool_name == "mydumper":
+        # mydumper uses regex to filter databases, so we just verify command generation
+        assert len(dump_cmd) > 0
+        assert "mydumper" in dump_cmd

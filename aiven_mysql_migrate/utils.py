@@ -1,4 +1,6 @@
 # Copyright (c) 2020 Aiven, Helsinki, Finland. https://aiven.io/
+from abc import ABCMeta, abstractmethod
+
 from aiven_mysql_migrate import config
 from aiven_mysql_migrate.exceptions import WrongMigrationConfigurationException
 from dataclasses import dataclass
@@ -175,10 +177,25 @@ class PrivilegeCheckUser:
         return params
 
 
-class MySQLDumpProcessor:
+class DumpProcessor(metaclass=ABCMeta):
     def __init__(self):
-        self.gtid = None
         self.gtid_block = ""
+        self.gtid = None
+
+    @abstractmethod
+    def process_line(self, line):
+        pass
+
+    def get_gtid(self):
+        return self.gtid
+
+
+class MydumperDumpProcessor(DumpProcessor):
+    def process_line(self, line: str) -> str:
+        return line
+
+
+class MySQLDumpProcessor(DumpProcessor):
 
     @staticmethod
     def _remove_log_bin_data(line: str) -> str:
@@ -235,9 +252,6 @@ class MySQLDumpProcessor:
         line = MySQLDumpProcessor._remove_definers(line)
         line = MySQLDumpProcessor._remove_deprecated_sql_modes(line)
         return line
-
-    def get_gtid(self):
-        return self.gtid
 
 
 def select_global_var(cur, var_name: str):

@@ -1,5 +1,6 @@
 # Copyright (c) 2020 Aiven, Helsinki, Finland. https://aiven.io/
 from aiven_mysql_migrate import config
+from aiven_mysql_migrate.dump_tools import MySQLMigrateTool
 from aiven_mysql_migrate.exceptions import NothingToMigrateException
 from aiven_mysql_migrate.migration import MySQLMigrateMethod, MySQLMigration
 from pathlib import Path
@@ -66,6 +67,14 @@ def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Op
         action="store_true",
         help="Allow migrating from a source that has no migratable databases"
     )
+    parser.add_argument(
+        "--dump-tool",
+        type=str,
+        required=False,
+        default="mysqldump",
+        choices=[e.value for e in MySQLMigrateTool],
+        help="Tool to use for database dump and restore. Default: mysqldump"
+    )
     parsed_args = parser.parse_args(args)
     setup_logging(debug=parsed_args.debug)
 
@@ -79,6 +88,7 @@ def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Op
         filter_dbs=parsed_args.filter_dbs,
         privilege_check_user=parsed_args.privilege_check_user,
         output_meta_file=parsed_args.output_meta_file,
+        dump_tool=parsed_args.dump_tool,
     )
     migration.setup_signal_handlers()
 
@@ -112,6 +122,7 @@ def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Op
         migration_method=migration_method,
         seconds_behind_master=parsed_args.seconds_behind_master,
         stop_replication=parsed_args.stop_replication,
+        dump_tool=parsed_args.dump_tool,
     )
 
     LOGGER.info("Migration finished.")

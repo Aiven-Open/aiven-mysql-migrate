@@ -1,6 +1,6 @@
 # Copyright (c) 2020 Aiven, Helsinki, Finland. https://aiven.io/
 from aiven_mysql_migrate import config
-from aiven_mysql_migrate.dump_tools import MySQLMigrationToolBase, MySQLDumpTool, MySQLMigrateMethod, MySQLMigrateTool
+from aiven_mysql_migrate.dump_tools import MySQLMigrationToolBase, get_dump_tool, MySQLMigrateMethod, MySQLMigrateTool
 from aiven_mysql_migrate.exceptions import (
     DatabaseTooLargeException, EndpointConnectionException, GTIDModeDisabledException, MissingReplicationGrants,
     NothingToMigrateException, ReplicaSetupException, ReplicationNotAvailableException, ServerIdsOverlappingException,
@@ -263,12 +263,13 @@ class MySQLMigration:
 
     def _migrate_data(self, migration_method: MySQLMigrateMethod) -> Optional[str]:
         """Migrate data using the configured dump tool, return GTID from the dump"""
-        if self.dump_tool_name == MySQLMigrateTool.mysqldump:
-            self.dump_tool = MySQLDumpTool(
-                source=self.source, target=self.target, databases=self.databases, skip_column_stats=self.skip_column_stats
-            )
-        else:
-            raise ValueError(f"Unknown dump tool: {self.dump_tool_name}")
+        self.dump_tool = get_dump_tool(
+            self.dump_tool_name,
+            self.source,
+            self.target,
+            self.databases,
+            self.skip_column_stats
+        )
 
         return self.dump_tool.execute_migration(migration_method)
 
@@ -376,9 +377,8 @@ class MySQLMigration:
 
             time.sleep(check_interval)
 
-    def start(
-        self, *, migration_method: MySQLMigrateMethod, seconds_behind_master: int, stop_replication: bool = False
-    ) -> None:
+    def start(self, *, migration_method: MySQLMigrateMethod, seconds_behind_master: int, stop_replication: bool = False,
+              dump_tool: str = "mysqldump") -> None:
         LOGGER.info("Start migration of the following databases:")
         for db in self.databases:
             LOGGER.info("\t%s", db)

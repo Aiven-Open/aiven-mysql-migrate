@@ -1,4 +1,5 @@
 from aiven_mysql_migrate.config import IGNORE_SYSTEM_DATABASES
+from aiven_mysql_migrate.dump_tools import MySQLMigrateTool
 from aiven_mysql_migrate.exceptions import (
     DatabaseTooLargeException, ReplicationNotAvailableException, SSLNotSupportedException
 )
@@ -46,13 +47,19 @@ def my_wait(host, ssl=True, retries=MYSQL_WAIT_RETRIES) -> MySQLConnectionInfo:
 
 
 @mark.parametrize(
-    "src,dst", [
-        (my_wait("mysql57-src-1"), my_wait("mysql80-dst-1")),
-        (my_wait("mysql80-src-2"), my_wait("mysql80-dst-2")),
+    "src,dst,dump_tool", [
+        (my_wait("mysql57-src-1"), my_wait("mysql80-dst-1"), "mysqldump"),
+        (my_wait("mysql80-src-2"), my_wait("mysql80-dst-2"), "mysqldump"),
+        (my_wait("mysql80-src-2"), my_wait("mysql80-dst-2"), "mydumper"),
+
     ]
 )
-def test_migration_replication(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, db_name: str, tmp_path: Path) -> None:
+def test_migration_replication(
+    src: MySQLConnectionInfo, dst: MySQLConnectionInfo, dump_tool: str, db_name: str, tmp_path: Path
+) -> None:
     output_meta_file = tmp_path / "meta.json"
+    with dst.cur() as cur:
+        cur.execute("STOP REPLICA FOR CHANNEL ''")
     with src.cur() as cur:
         cur.execute(f"CREATE DATABASE {db_name}")
         cur.execute(f"USE {db_name}")
@@ -68,11 +75,11 @@ def test_migration_replication(src: MySQLConnectionInfo, dst: MySQLConnectionInf
         target_master_uri=dst.to_uri(),
         privilege_check_user="root@%",
         output_meta_file=output_meta_file,
+        dump_tool=MySQLMigrateTool(dump_tool),
     )
     method = migration.run_checks()
     assert method == MySQLMigrateMethod.replication
-    migration.start(migration_method=method, seconds_behind_master=0)
-
+    migration.start(migration_method=method, seconds_behind_master=0, dump_tool=dump_tool)
     assert output_meta_file.exists()
     with output_meta_file.open("r") as meta_file:
         meta = json.loads(meta_file.read())
@@ -99,11 +106,14 @@ def test_migration_replication(src: MySQLConnectionInfo, dst: MySQLConnectionInf
     raise TimeoutException()
 
 
-@mark.parametrize("src,dst", [
-    (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3")),
-    (my_wait("mysql57-src-invalid-gtid"), my_wait("mysql80-dst-1")),
-])
-def test_migration_fallback(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, db_name: str) -> None:
+@mark.parametrize(
+    "src,dst,dump_tool", [
+        (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3"), "mysqldump"),
+        (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3"), "mydumper"),
+        (my_wait("mysql57-src-invalid-gtid"), my_wait("mysql80-dst-1"), "mysqldump"),
+    ]
+)
+def test_migration_fallback(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, dump_tool: str, db_name: str) -> None:
     with src.cur() as cur:
         cur.execute(f"CREATE DATABASE {db_name}")
         cur.execute(f"USE {db_name}")
@@ -116,10 +126,11 @@ def test_migration_fallback(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, 
         source_uri=src.to_uri(),
         target_uri=dst.to_uri(),
         target_master_uri=dst.to_uri(),
+        dump_tool=MySQLMigrateTool(dump_tool),
     )
     method = migration.run_checks()
     assert method == MySQLMigrateMethod.dump
-    migration.start(migration_method=method, seconds_behind_master=0)
+    migration.start(migration_method=method, seconds_behind_master=0, dump_tool=dump_tool)
 
     with dst.cur() as cur:
         cur.execute(f"SELECT ID FROM {db_name}.test")
@@ -132,16 +143,24 @@ def test_migration_fallback(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, 
 
 
 @mark.parametrize(
-    "src,dst,forced_method,context", [
-        (my_wait("mysql80-src-2"), my_wait("mysql80-dst-2"), MySQLMigrateMethod.replication, does_not_raise()),
+    "src,dst,forced_method,context,dump_tool", [
+        (my_wait("mysql80-src-2"), my_wait("mysql80-dst-2"), MySQLMigrateMethod.replication, does_not_raise(), "mysqldump"),
+        (my_wait("mysql80-src-2"), my_wait("mysql80-dst-2"), MySQLMigrateMethod.replication, does_not_raise(), "mydumper"),
         (
             my_wait("mysql80-src-3"), my_wait("mysql80-dst-3"), MySQLMigrateMethod.replication,
-            pytest.raises(ReplicationNotAvailableException)
+            pytest.raises(ReplicationNotAvailableException), "mysqldump"
         ),
-        (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3"), MySQLMigrateMethod.dump, does_not_raise()),
+        (
+            my_wait("mysql80-src-3"), my_wait("mysql80-dst-3"), MySQLMigrateMethod.replication,
+            pytest.raises(ReplicationNotAvailableException), "mydumper"
+        ),
+        (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3"), MySQLMigrateMethod.dump, does_not_raise(), "mysqldump"),
+        (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3"), MySQLMigrateMethod.dump, does_not_raise(), "mydumper"),
     ]
 )
-def test_force_migration_method(src, dst, forced_method, context, db_name):
+def test_force_migration_method(  # pylint: disable=too-many-positional-arguments
+    src, dst, forced_method, context, dump_tool, db_name
+):
     with src.cur() as cur:
         cur.execute(f"CREATE DATABASE {db_name}")
         cur.execute(f"USE {db_name}")
@@ -154,6 +173,7 @@ def test_force_migration_method(src, dst, forced_method, context, db_name):
         target_uri=dst.to_uri(),
         target_master_uri=dst.to_uri(),
         privilege_check_user="root@%",
+        dump_tool=MySQLMigrateTool(dump_tool),
     )
 
     with context:
@@ -161,10 +181,13 @@ def test_force_migration_method(src, dst, forced_method, context, db_name):
         assert method == forced_method
 
 
-@mark.parametrize("src,dst", [
-    (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3")),
-])
-def test_database_size_check(src, dst, db_name):
+@mark.parametrize(
+    "src,dst,dump_tool", [
+        (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3"), "mysqldump"),
+        (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3"), "mydumper"),
+    ]
+)
+def test_database_size_check(src, dst, dump_tool, db_name):
     ignore_dbs = IGNORE_SYSTEM_DATABASES.copy()
     ignore_dbs.add(db_name)
 
@@ -185,6 +208,7 @@ def test_database_size_check(src, dst, db_name):
         source_uri=src.to_uri(),
         target_uri=dst.to_uri(),
         target_master_uri=dst.to_uri(),
+        dump_tool=MySQLMigrateTool(dump_tool),
     )
 
     # Should fit to this size.
@@ -202,10 +226,13 @@ def test_database_size_check(src, dst, db_name):
     migration.run_checks(dbs_max_total_size=0)
 
 
-@mark.parametrize("src,dst", [
-    (my_wait("mysql80-src-4", ssl=False), my_wait("mysql80-dst-3")),
-])
-def test_database_ssl_disabled(src, dst, db_name):
+@mark.parametrize(
+    "src,dst,dump_tool", [
+        (my_wait("mysql80-src-4", ssl=False), my_wait("mysql80-dst-3"), "mysqldump"),
+        (my_wait("mysql80-src-4", ssl=False), my_wait("mysql80-dst-3"), "mydumper"),
+    ]
+)
+def test_database_ssl_disabled(src, dst, dump_tool, db_name):
     ignore_dbs = IGNORE_SYSTEM_DATABASES.copy()
     ignore_dbs.add(db_name)
 
@@ -219,6 +246,7 @@ def test_database_ssl_disabled(src, dst, db_name):
         source_uri=src.to_uri(),
         target_uri=dst.to_uri(),
         target_master_uri=dst.to_uri(),
+        dump_tool=MySQLMigrateTool(dump_tool),
     )
     migration.run_checks()
 
@@ -228,6 +256,7 @@ def test_database_ssl_disabled(src, dst, db_name):
         source_uri=src.to_uri(),
         target_uri=dst.to_uri(),
         target_master_uri=dst.to_uri(),
+        dump_tool=MySQLMigrateTool(dump_tool),
     )
     with pytest.raises(SSLNotSupportedException):
         migration.run_checks()

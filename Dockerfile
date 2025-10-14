@@ -6,6 +6,11 @@ RUN gpg --keyserver keyserver.ubuntu.com --recv-keys A8D3785C \
     && apt-get update -y \
     && apt-get install -y mysql-client
 
+# Install mydumper/myloader
+RUN apt-get install -y wget zstd
+RUN wget https://github.com/mydumper/mydumper/releases/download/v0.20.1-2/mydumper_0.20.1-2.bookworm_amd64.deb
+RUN apt-get install -y ./mydumper_0.20.1-2.bookworm_amd64.deb
+
 COPY . /app
 WORKDIR /app
 

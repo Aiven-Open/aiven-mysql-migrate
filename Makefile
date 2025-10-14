@@ -49,7 +49,7 @@ test:
 .ONESHELL: systest
 systest:
 	$(DOCKER) compose -f docker-compose.test.yaml up -d --build && \
-	$(DOCKER) compose -f docker-compose.test.yaml run test python -m pytest -v test/sys/; \
+	$(DOCKER) compose -f docker-compose.test.yaml run test python -m pytest --log-cli-level=debug -x -v test/sys/; \
 	code=$$? && \
 	$(DOCKER) compose -f docker-compose.test.yaml down --rmi all --remove-orphans --volumes && \
 	exit $$code

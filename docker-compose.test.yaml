@@ -4,6 +4,7 @@ services:
 
   test:
     build: .
+    platform: linux/amd64
     depends_on:
       - mysql57-src-1
       - mysql57-src-invalid-gtid
@@ -13,6 +14,9 @@ services:
       - mysql80-dst-1
       - mysql80-dst-2
       - mysql80-dst-3
+    volumes:
+      - .:/app
+
 
   mysql57-src-1:
     image: mysql:5.7
