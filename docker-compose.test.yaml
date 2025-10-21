@@ -15,6 +15,7 @@ services:
 
   mysql57-src-1:
     image: mysql:5.7
+    platform: linux/amd64
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: test
