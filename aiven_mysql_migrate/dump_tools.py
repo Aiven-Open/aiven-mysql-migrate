@@ -16,8 +16,12 @@ class MySQLMigrateMethod(str, Enum):
     replication = "replication"
 
 
-class DumpToolBase(ABC):
-    """Abstract base class for database dump tools."""
+class MySQLMigrateTool(str, Enum):
+    mysqldump = "mysqldump"
+
+
+class MySQLMigrationToolBase(ABC):
+    """Abstract base class for MySQL database migration operations (dump and import)."""
     def __init__(
         self,
         source: MySQLConnectionInfo,
@@ -53,28 +57,22 @@ class DumpToolBase(ABC):
         dump_cmd = self.get_dump_command(migration_method)
         import_cmd = self.get_import_command()
 
-        try:
-            _, _, gtid = self.process_executor.execute_pipe_commands(
-                dump_cmd=dump_cmd, import_cmd=import_cmd, target=self.target
-            )
-            self._gtid = gtid
-            return self._gtid
-        except Exception as e:
-            LOGGER.error("Error during migration: %s", e)
-            self.cleanup()
-            raise
+        _, _, gtid = self.process_executor.execute_piped_commands(
+            dump_cmd=dump_cmd, import_cmd=import_cmd, target=self.target
+        )
+        self._gtid = gtid
+        return self._gtid
 
     def cleanup(self) -> None:
-        """Cleanup any temporary resources."""
         self.process_executor.terminate_processes()
 
     def get_gtid(self) -> Optional[str]:
-        """Return the extracted GTID for replication setup."""
         return self._gtid
 
 
-class MySQLDumpTool(DumpToolBase):
+class MySQLDumpTool(MySQLMigrationToolBase):
     """MySQL dump tool using mysqldump/mysql."""
+
     def get_dump_command(self, migration_method: MySQLMigrateMethod) -> List[str]:
         """Build mysqldump command."""
         # "--flush-logs" and "--master-data=2" would be good options to add, but they do not work for RDS admin

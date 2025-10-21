@@ -21,7 +21,7 @@ class ProcessExecutor:
         self.import_proc: Optional[Popen] = None
         self.dump_proc: Optional[Popen] = None
 
-    def execute_pipe_commands(
+    def execute_piped_commands(
         self,
         dump_cmd: List[str],
         import_cmd: List[str],
@@ -111,7 +111,6 @@ class ProcessExecutor:
         return export_code, import_code, gtid
 
     def terminate_processes(self) -> None:
-        """Terminate a list of processes."""
         for proc in (self.import_proc, self.dump_proc):
             if proc:
                 LOGGER.warning("Terminating subprocess with pid: %s", proc.pid)

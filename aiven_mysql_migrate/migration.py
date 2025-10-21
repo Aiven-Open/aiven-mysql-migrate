@@ -1,6 +1,6 @@
 # Copyright (c) 2020 Aiven, Helsinki, Finland. https://aiven.io/
 from aiven_mysql_migrate import config
-from aiven_mysql_migrate.dump_tools import DumpToolBase, MySQLDumpTool, MySQLMigrateMethod
+from aiven_mysql_migrate.dump_tools import MySQLMigrationToolBase, MySQLDumpTool, MySQLMigrateMethod, MySQLMigrateTool
 from aiven_mysql_migrate.exceptions import (
     DatabaseTooLargeException, EndpointConnectionException, GTIDModeDisabledException, MissingReplicationGrants,
     NothingToMigrateException, ReplicaSetupException, ReplicationNotAvailableException, ServerIdsOverlappingException,
@@ -39,10 +39,10 @@ class MySQLMigration:
         filter_dbs: Optional[str] = None,
         privilege_check_user: Optional[str] = None,
         output_meta_file: Optional[Path] = None,
-        dump_tool: str = "mysqldump",
+        dump_tool: MySQLMigrateTool = MySQLMigrateTool.mysqldump,
     ):
         self.dump_tool_name = dump_tool
-        self.dump_tool: Optional[DumpToolBase] = None
+        self.dump_tool: Optional[MySQLMigrationToolBase] = None
 
         self.source = MySQLConnectionInfo.from_uri(source_uri, name="source")
         self.target = MySQLConnectionInfo.from_uri(target_uri, name="target")
@@ -252,14 +252,13 @@ class MySQLMigration:
 
     def _migrate_data(self, migration_method: MySQLMigrateMethod) -> Optional[str]:
         """Migrate data using the configured dump tool, return GTID from the dump"""
-        if self.dump_tool_name == "mysqldump":
+        if self.dump_tool_name == MySQLMigrateTool.mysqldump:
             self.dump_tool = MySQLDumpTool(
                 source=self.source, target=self.target, databases=self.databases, skip_column_stats=self.skip_column_stats
             )
         else:
             raise ValueError(f"Unknown dump tool: {self.dump_tool_name}")
 
-        # Execute migration
         return self.dump_tool.execute_migration(migration_method)
 
     def _set_gtid(self, gtid: str):
