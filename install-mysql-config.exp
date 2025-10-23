@@ -1,8 +1,0 @@
-#!/usr/bin/expect
-
-set timeout 20
-spawn apt install -y ./mysql-apt-config_0.8.34-1_all.deb
-expect {
-    "Which MySQL product do you wish to configure? " { send "3\n" }
-}
-expect eof

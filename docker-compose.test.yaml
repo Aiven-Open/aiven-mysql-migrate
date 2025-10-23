@@ -6,6 +6,7 @@ services:
     build: .
     platform: linux/amd64
     depends_on:
+      - mysql57-src-1
       - mysql80-src-2
       - mysql80-src-3
       - mysql80-src-4

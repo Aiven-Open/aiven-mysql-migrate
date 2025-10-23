@@ -1,8 +1,8 @@
 FROM python:3.12-bookworm
 
-RUN apt-get update && apt-get install -y curl gnupg \
-    && curl -fsSL https://repo.mysql.com/RPM-GPG-KEY-mysql-2023 | gpg --dearmor -o /usr/share/keyrings/mysql-keyring.gpg \
-    && echo "deb [trusted=yes signed-by=/usr/share/keyrings/mysql-keyring.gpg] http://repo.mysql.com/apt/debian/ bookworm mysql-8.0" | tee /etc/apt/sources.list.d/mysql.list \
+RUN gpg --keyserver keyserver.ubuntu.com --recv-keys A8D3785C \
+    && gpg --export A8D3785C > /etc/apt/keyrings/mysql.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/mysql.gpg] http://repo.mysql.com/apt/debian/ bookworm mysql-8.0" | tee /etc/apt/sources.list.d/mysql.list \
     && apt-get update \
     && apt-get install -y mysql-client
 
