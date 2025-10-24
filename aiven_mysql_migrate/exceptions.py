@@ -65,3 +65,15 @@ class MySQLImportException(Exception):
 
 class ReplicaSetupException(Exception):
     pass
+
+
+class MyDumperException(Exception):
+    pass
+
+
+class MyLoaderException(Exception):
+    pass
+
+
+class DumpToolNotFoundError(Exception):
+    pass
