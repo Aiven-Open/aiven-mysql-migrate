@@ -274,7 +274,6 @@ class MyDumperTool(MySQLMigrationToolBase):
             "--logfile",
             f"{self.temp_dir.name}/../myloader.log",
             "--verbose=4",
-            "--debug",
             "--stream=NO_STREAM_AND_NO_DELETE",
             "--drop-table",
             "--drop-database",
@@ -301,15 +300,12 @@ class MyDumperTool(MySQLMigrationToolBase):
             LOGGER.warning("mydumper metadata file not found")
             return None
 
-        try:
-            with metadata_file.open('r') as f:
-                for line in f:
-                    if line.startswith("executed_gtid_set ="):
-                        gtid = line.split("=", 1)[1].strip().strip('"')
-                        LOGGER.info("Extracted GTID from mydumper metadata: %s", gtid)
-                        return gtid
-        except (OSError, IOError) as e:
-            LOGGER.warning("Failed to extract GTID from metadata: %s", e)
+        with metadata_file.open('r') as f:
+            for line in f:
+                if line.startswith("executed_gtid_set ="):
+                    gtid = line.split("=", 1)[1].strip().strip('"')
+                    LOGGER.info("Extracted GTID from mydumper metadata: %s", gtid)
+                    return gtid
 
         return None
 
@@ -318,11 +314,8 @@ class MyDumperTool(MySQLMigrationToolBase):
         super().cleanup()
 
         if self.temp_dir:
-            try:
-                self.temp_dir.cleanup()
-                self.temp_dir = None
-            except (OSError, IOError) as e:
-                LOGGER.warning("Failed to cleanup temporary directory: %s", e)
+            self.temp_dir.cleanup()
+            self.temp_dir = None
 
         self.temp_cnf_file = None
         self.temp_target_cnf_file = None
