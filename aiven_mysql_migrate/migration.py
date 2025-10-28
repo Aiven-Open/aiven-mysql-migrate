@@ -1,6 +1,7 @@
 # Copyright (c) 2020 Aiven, Helsinki, Finland. https://aiven.io/
 from aiven_mysql_migrate import config
-from aiven_mysql_migrate.dump_tools import MySQLMigrationToolBase, get_dump_tool, MySQLMigrateMethod, MySQLMigrateTool
+from aiven_mysql_migrate.dump_tools import MySQLMigrationToolBase, get_dump_tool
+from aiven_mysql_migrate.enums import MySQLMigrateTool, MySQLMigrateMethod
 from aiven_mysql_migrate.exceptions import (
     DatabaseTooLargeException, EndpointConnectionException, GTIDModeDisabledException, MissingReplicationGrants,
     NothingToMigrateException, ReplicaSetupException, ReplicationNotAvailableException, ServerIdsOverlappingException,
@@ -377,8 +378,8 @@ class MySQLMigration:
 
             time.sleep(check_interval)
 
-    def start(self, *, migration_method: MySQLMigrateMethod, seconds_behind_master: int, stop_replication: bool = False,
-              dump_tool: str = "mysqldump") -> None:
+    def start(self, *,
+              migration_method: MySQLMigrateMethod, seconds_behind_master: int, stop_replication: bool = False) -> None:
         LOGGER.info("Start migration of the following databases:")
         for db in self.databases:
             LOGGER.info("\t%s", db)

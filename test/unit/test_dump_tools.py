@@ -2,7 +2,7 @@
 from aiven_mysql_migrate.dump_tools import (MySQLMigrationToolBase, MySQLDumpTool, MyDumperTool, get_dump_tool)
 from aiven_mysql_migrate.exceptions import DumpToolNotFoundError
 from aiven_mysql_migrate.utils import MySQLConnectionInfo
-from aiven_mysql_migrate.migration import MySQLMigrateMethod
+from aiven_mysql_migrate.enums import MySQLMigrateMethod
 from pathlib import Path
 from pytest import raises
 from unittest.mock import patch, MagicMock
@@ -43,7 +43,7 @@ class TestGetDumpTool:
         target = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
         databases = ["testdb"]
 
-        with raises(ValueError, match="Unknown dump tool: unknown_tool"):
+        with raises(NotImplementedError, match="Unknown dump tool: unknown_tool"):
             get_dump_tool("unknown_tool", source, target, databases, skip_column_stats=False)
 
 

@@ -1,9 +1,9 @@
 from aiven_mysql_migrate.config import IGNORE_SYSTEM_DATABASES
-from aiven_mysql_migrate.dump_tools import MySQLMigrateTool
+from aiven_mysql_migrate.enums import MySQLMigrateTool, MySQLMigrateMethod
 from aiven_mysql_migrate.exceptions import (
     DatabaseTooLargeException, ReplicationNotAvailableException, SSLNotSupportedException
 )
-from aiven_mysql_migrate.migration import MySQLMigrateMethod, MySQLMigration
+from aiven_mysql_migrate.migration import MySQLMigration
 from aiven_mysql_migrate.utils import MySQLConnectionInfo
 from contextlib import nullcontext as does_not_raise
 from pathlib import Path
@@ -79,7 +79,7 @@ def test_migration_replication(
     )
     method = migration.run_checks()
     assert method == MySQLMigrateMethod.replication
-    migration.start(migration_method=method, seconds_behind_master=0, dump_tool=dump_tool)
+    migration.start(migration_method=method, seconds_behind_master=0)
     assert output_meta_file.exists()
     with output_meta_file.open("r") as meta_file:
         meta = json.loads(meta_file.read())
@@ -130,7 +130,7 @@ def test_migration_fallback(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, 
     )
     method = migration.run_checks()
     assert method == MySQLMigrateMethod.dump
-    migration.start(migration_method=method, seconds_behind_master=0, dump_tool=dump_tool)
+    migration.start(migration_method=method, seconds_behind_master=0)
 
     with dst.cur() as cur:
         cur.execute(f"SELECT ID FROM {db_name}.test")
