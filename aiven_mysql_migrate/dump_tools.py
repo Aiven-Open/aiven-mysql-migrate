@@ -1,10 +1,11 @@
 # Copyright (c) 2025 Aiven, Helsinki, Finland. https://aiven.io/
 import textwrap
 from abc import ABC, abstractmethod
+
+from aiven_mysql_migrate.enums import MySQLMigrateTool, MySQLMigrateMethod
 from aiven_mysql_migrate.exceptions import DumpToolNotFoundError, ReplicaSetupException
 from aiven_mysql_migrate.migration_executor import ProcessExecutor
 from aiven_mysql_migrate.utils import MySQLConnectionInfo
-from enum import Enum
 from pathlib import Path
 from typing import List, Optional
 
@@ -17,16 +18,6 @@ import tempfile
 LOGGER = logging.getLogger(__name__)
 
 
-class MySQLMigrateMethod(str, Enum):
-    dump = "dump"
-    replication = "replication"
-
-
-class MySQLMigrateTool(str, Enum):
-    mysqldump = "mysqldump"
-    mydumper = "mydumper"
-
-
 class MySQLMigrationToolBase(ABC):
     """Abstract base class for MySQL database migration operations (dump and import)."""
     def __init__(
@@ -36,7 +27,7 @@ class MySQLMigrationToolBase(ABC):
         databases: List[str],
         skip_column_stats: bool,
         *,
-        dump_tool_name: str = "mysqldump",
+        dump_tool_name: MySQLMigrateTool = MySQLMigrateTool.mysqldump,
     ):
         self.source = source
         self.target = target
@@ -136,7 +127,7 @@ class MyDumperTool(MySQLMigrationToolBase):
         databases: List[str],
         skip_column_stats: bool,
         *,
-        dump_tool_name: str = "mydumper",
+        dump_tool_name: MySQLMigrateTool = MySQLMigrateTool.mydumper,
     ):
         super().__init__(source, target, databases, skip_column_stats, dump_tool_name=dump_tool_name)
         self.temp_dir: Optional[tempfile.TemporaryDirectory] = None
@@ -328,16 +319,16 @@ class MyDumperTool(MySQLMigrationToolBase):
 
 
 def get_dump_tool(
-    tool_name: str,
+    tool_name: MySQLMigrateTool,
     source: MySQLConnectionInfo,
     target: MySQLConnectionInfo,
     databases: List[str],
     skip_column_stats: bool,
 ) -> MySQLMigrationToolBase:
     """Factory function to create dump tool instances."""
-    if tool_name == "mysqldump":
+    if tool_name == MySQLMigrateTool.mysqldump:
         return MySQLDumpTool(source, target, databases, skip_column_stats, dump_tool_name=tool_name)
-    elif tool_name == "mydumper":
+    elif tool_name == MySQLMigrateTool.mydumper:
         return MyDumperTool(source, target, databases, skip_column_stats, dump_tool_name=tool_name)
     else:
-        raise ValueError(f"Unknown dump tool: {tool_name}")
+        raise NotImplementedError(f"Unknown dump tool: {tool_name}")

@@ -1,8 +1,8 @@
 # Copyright (c) 2020 Aiven, Helsinki, Finland. https://aiven.io/
 from aiven_mysql_migrate import config
-from aiven_mysql_migrate.dump_tools import MySQLMigrateTool
+from aiven_mysql_migrate.enums import MySQLMigrateTool, MySQLMigrateMethod
 from aiven_mysql_migrate.exceptions import NothingToMigrateException
-from aiven_mysql_migrate.migration import MySQLMigrateMethod, MySQLMigration
+from aiven_mysql_migrate.migration import MySQLMigration
 from pathlib import Path
 from typing import Optional, Sequence
 
@@ -122,7 +122,6 @@ def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Op
         migration_method=migration_method,
         seconds_behind_master=parsed_args.seconds_behind_master,
         stop_replication=parsed_args.stop_replication,
-        dump_tool=parsed_args.dump_tool,
     )
 
     LOGGER.info("Migration finished.")

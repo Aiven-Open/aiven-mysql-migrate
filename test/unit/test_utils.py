@@ -1,7 +1,7 @@
 from aiven_mysql_migrate.exceptions import WrongMigrationConfigurationException
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor
 from aiven_mysql_migrate.dump_tools import get_dump_tool
-from aiven_mysql_migrate.migration import MySQLMigrateMethod
+from aiven_mysql_migrate.enums import MySQLMigrateMethod
 from pytest import mark, raises
 from typing import Optional, Type
 

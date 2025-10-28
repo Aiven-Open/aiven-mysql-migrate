@@ -1,4 +1,5 @@
 # Copyright (c) 2025 Aiven, Helsinki, Finland. https://aiven.io/
+from aiven_mysql_migrate.enums import MySQLMigrateTool
 from aiven_mysql_migrate.exceptions import MySQLDumpException, MySQLImportException
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, select_global_var, MydumperDumpProcessor
 from concurrent import futures
@@ -28,7 +29,7 @@ class ProcessExecutor:
         target: MySQLConnectionInfo,
         *,
         line_processor: Optional[Callable[[str], str]] = None,
-        dump_tool: str = "mysqldump"
+        dump_tool: MySQLMigrateTool = MySQLMigrateTool.mysqldump
     ) -> Optional[str]:
         """
         Execute dump and import commands with piping.
@@ -48,7 +49,7 @@ class ProcessExecutor:
         dump_processor: Optional[MySQLDumpProcessor | MydumperDumpProcessor]
         if line_processor:
             dump_processor = None
-        elif dump_tool == "mydumper":
+        elif dump_tool == MySQLMigrateTool.mydumper:
             dump_processor = MydumperDumpProcessor()
         else:  # mysqldump (default)
             dump_processor = MySQLDumpProcessor()
@@ -66,7 +67,7 @@ class ProcessExecutor:
         )
 
         # Disallow creating child processes in migration target when this runs as non-root user
-        if hasattr(resource, "prlimit") and dump_tool == "mysqldump":
+        if hasattr(resource, "prlimit") and dump_tool == MySQLMigrateTool.mysqldump:
             resource.prlimit(self.import_proc.pid, resource.RLIMIT_NPROC, (0, 0))  # pylint: disable=no-member
 
         # make mypy happy
