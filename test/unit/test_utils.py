@@ -160,6 +160,10 @@ def test_dump_tool_command_generation(tool_name):
     # Test factory function creates correct tool
     tool = get_dump_tool(tool_name, source, target, databases, skip_column_stats=False)
 
+    # Setup tool if it's MyDumperTool
+    if hasattr(tool, 'setup'):
+        tool.setup()
+
     # Test dump command generation for replication method
     dump_cmd = tool.get_dump_command(MySQLMigrateMethod.replication)
     assert isinstance(dump_cmd, list)
@@ -196,6 +200,11 @@ def test_dump_tool_ssl_handling(tool_name):
     databases = ["testdb"]
 
     tool_ssl = get_dump_tool(tool_name, source_ssl, target_ssl, databases, skip_column_stats=False)
+
+    # Setup tool if it's MyDumperTool
+    if hasattr(tool_ssl, 'setup'):
+        tool_ssl.setup()
+
     dump_cmd_ssl = tool_ssl.get_dump_command(MySQLMigrateMethod.replication)
     import_cmd_ssl = tool_ssl.get_import_command(MySQLMigrateMethod.replication)
 
@@ -204,6 +213,11 @@ def test_dump_tool_ssl_handling(tool_name):
     target_no_ssl = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=False)
 
     tool_no_ssl = get_dump_tool(tool_name, source_no_ssl, target_no_ssl, databases, skip_column_stats=False)
+
+    # Setup tool if it's MyDumperTool
+    if hasattr(tool_no_ssl, 'setup'):
+        tool_no_ssl.setup()
+
     dump_cmd_no_ssl = tool_no_ssl.get_dump_command(MySQLMigrateMethod.replication)
     import_cmd_no_ssl = tool_no_ssl.get_import_command(MySQLMigrateMethod.replication)
 
@@ -232,6 +246,10 @@ def test_dump_tool_gtid_handling(tool_name):
 
     tool = get_dump_tool(tool_name, source, target, databases, skip_column_stats=False)
 
+    # Setup tool if it's MyDumperTool
+    if hasattr(tool, 'setup'):
+        tool.setup()
+
     # Test replication method (should include GTID)
     dump_cmd_replication = tool.get_dump_command(MySQLMigrateMethod.replication)
 
@@ -251,6 +269,11 @@ def test_dump_tool_database_handling(tool_name):
     databases = ["db1", "db2", "db3"]
 
     tool = get_dump_tool(tool_name, source, target, databases, skip_column_stats=False)
+
+    # Setup tool if it's MyDumperTool
+    if hasattr(tool, 'setup'):
+        tool.setup()
+
     dump_cmd = tool.get_dump_command(MySQLMigrateMethod.replication)
 
     if tool_name == "mysqldump":

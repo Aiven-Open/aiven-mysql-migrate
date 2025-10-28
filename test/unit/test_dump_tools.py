@@ -151,6 +151,7 @@ class TestMyDumperTool:
 
     def test_get_dump_command_replication_method(self):
         """Test mydumper command generation for replication method."""
+        self.tool.setup()
         cmd = self.tool.get_dump_command(MySQLMigrateMethod.replication)
 
         assert "mydumper" in cmd
@@ -177,6 +178,7 @@ class TestMyDumperTool:
 
     def test_get_dump_command_dump_method(self):
         """Test mydumper command generation for dump method."""
+        self.tool.setup()
         cmd = self.tool.get_dump_command(MySQLMigrateMethod.dump)
 
         assert "mydumper" in cmd
@@ -184,6 +186,7 @@ class TestMyDumperTool:
 
     def test_get_import_command(self):
         """Test myloader command generation."""
+        self.tool.setup()
         # First call get_dump_command to initialize temp files
         self.tool.get_dump_command(MySQLMigrateMethod.replication)
         cmd = self.tool.get_import_command(MySQLMigrateMethod.replication)
@@ -203,6 +206,7 @@ class TestMyDumperTool:
 
     def test_get_import_command_dump_method(self):
         """Test myloader command generation for dump method."""
+        self.tool.setup()
         # First call get_dump_command to initialize temp files
         self.tool.get_dump_command(MySQLMigrateMethod.dump)
         cmd = self.tool.get_import_command(MySQLMigrateMethod.dump)
@@ -211,6 +215,7 @@ class TestMyDumperTool:
 
     def test_temp_cnf_file_creation(self):
         """Test temporary .cnf file creation and permissions."""
+        self.tool.setup()
         self.tool.get_dump_command(MySQLMigrateMethod.replication)
 
         assert self.tool.temp_cnf_file is not None
@@ -222,6 +227,7 @@ class TestMyDumperTool:
 
     def test_temp_cnf_file_content(self):
         """Test .cnf file contains correct credentials."""
+        self.tool.setup()
         self.tool.get_dump_command(MySQLMigrateMethod.replication)
 
         with self.tool.temp_cnf_file.open('r', encoding='utf-8') as f:
@@ -238,6 +244,7 @@ class TestMyDumperTool:
         """Test .cnf file without SSL settings."""
         source_no_ssl = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=False)
         tool = MyDumperTool(source_no_ssl, self.target, self.databases, skip_column_stats=False)
+        tool.setup()
         tool.get_dump_command(MySQLMigrateMethod.replication)
 
         with tool.temp_cnf_file.open('r', encoding='utf-8') as f:
@@ -247,6 +254,7 @@ class TestMyDumperTool:
 
     def test_temp_directory_creation(self):
         """Test temporary directory creation."""
+        self.tool.setup()
         self.tool.get_dump_command(MySQLMigrateMethod.replication)
 
         assert self.tool.temp_dir is not None
@@ -254,6 +262,7 @@ class TestMyDumperTool:
 
     def test_cleanup(self):
         """Test cleanup removes temporary files."""
+        self.tool.setup()
         self.tool.get_dump_command(MySQLMigrateMethod.replication)
 
         temp_dir_path = Path(self.tool.temp_dir.name)

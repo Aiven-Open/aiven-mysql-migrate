@@ -135,6 +135,21 @@ class MyDumperTool(MySQLMigrationToolBase):
         self.temp_target_cnf_file: Optional[Path] = None
         self.dump_output_dir: Optional[Path] = None
 
+    def setup(self) -> None:
+        """Setup temporary resources for migration."""
+
+        if not self.temp_dir:
+            self.temp_dir = self._create_temp_directory()
+
+        if not self.temp_cnf_file:
+            self.temp_cnf_file = self._create_temp_cnf_file(self.source, "source.cnf")
+
+        if not self.temp_target_cnf_file:
+            self.temp_target_cnf_file = self._create_temp_cnf_file(self.target, "target.cnf")
+
+        if not self.dump_output_dir:
+            self.dump_output_dir = self._get_dump_output_dir()
+
     def execute_migration(self, migration_method: MySQLMigrateMethod) -> Optional[str]:
         """
         Execute the migration and extract GTID from metadata file if available.
@@ -145,6 +160,7 @@ class MyDumperTool(MySQLMigrationToolBase):
         Returns:
             GTID string for replication setup, or None
         """
+        self.setup()
         super().execute_migration(migration_method)
 
         # If we need GTID for replication, extract it from metadata file
@@ -198,11 +214,8 @@ class MyDumperTool(MySQLMigrationToolBase):
 
     def get_dump_command(self, migration_method: MySQLMigrateMethod) -> List[str]:
         """Build mydumper command."""
-        if not self.temp_cnf_file:
-            self.temp_cnf_file = self._create_temp_cnf_file(self.source, "source.cnf")
-
-        dump_output_dir = self._get_dump_output_dir()
-
+        assert self.temp_cnf_file is not None, "setup() must be called before get_dump_command()"
+        assert self.dump_output_dir is not None, "setup() must be called before get_dump_command()"
         assert self.temp_dir is not None, "temp_dir must exist at this point"
 
         cmd = [
@@ -231,7 +244,7 @@ class MyDumperTool(MySQLMigrationToolBase):
             "--stream=NO_STREAM_AND_NO_DELETE",
             "--replica-data",
             "--source-data",
-            f"--outputdir={dump_output_dir}"
+            f"--outputdir={self.dump_output_dir}"
         ]
         if self.source.ssl:
             cmd += ["--ssl-mode=REQUIRED"]
@@ -242,11 +255,8 @@ class MyDumperTool(MySQLMigrationToolBase):
 
     def get_import_command(self, migration_method: Optional[MySQLMigrateMethod] = None) -> List[str]:
         """Build myloader command."""
-        if not self.temp_target_cnf_file:
-            self.temp_target_cnf_file = self._create_temp_cnf_file(self.target, "target.cnf")
-
-        dump_output_dir = self._get_dump_output_dir()
-
+        assert self.temp_target_cnf_file is not None, "setup() must be called before get_import_command()"
+        assert self.dump_output_dir is not None, "setup() must be called before get_import_command()"
         assert self.temp_dir is not None, "temp_dir must exist at this point"
 
         cmd = [
@@ -257,7 +267,7 @@ class MyDumperTool(MySQLMigrationToolBase):
             "--port",
             str(self.target.port),
             "--threads=0",
-            f"--directory={dump_output_dir}",
+            f"--directory={self.dump_output_dir}",
             "--optimize-keys=AFTER_IMPORT_ALL_TABLES",
             "--compress-protocol=zstd",
             "--overwrite-tables",
