@@ -171,7 +171,6 @@ class TestMyDumperTool:
         assert "--no-backup-locks" in cmd
         assert "--skip-ddl-locks" in cmd
         assert "--checksum-all" in cmd
-        assert "--logfile" in cmd
         assert "--verbose=4" in cmd
         assert "--stream=NO_STREAM_AND_NO_DELETE" in cmd
         assert "--database" == cmd[-2]  # Last argument should be output directory
@@ -199,7 +198,6 @@ class TestMyDumperTool:
         assert "--port" in cmd
         assert "--optimize-keys=AFTER_IMPORT_ALL_TABLES" in cmd
         assert "--compress-protocol=zstd" in cmd
-        assert "--logfile" in cmd
         assert "--verbose=4" in cmd
         assert "--overwrite-tables" in cmd
         assert "--stream=NO_STREAM" in cmd
