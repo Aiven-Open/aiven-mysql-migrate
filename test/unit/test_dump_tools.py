@@ -202,7 +202,7 @@ class TestMyDumperTool:
         assert "--logfile" in cmd
         assert "--verbose=4" in cmd
         assert "--overwrite-tables" in cmd
-        assert "--stream=NO_STREAM_AND_NO_DELETE" in cmd
+        assert "--stream=NO_STREAM" in cmd
 
     def test_get_import_command_dump_method(self):
         """Test myloader command generation for dump method."""
@@ -297,6 +297,37 @@ class TestMyDumperTool:
 
             gtid = self.tool._extract_gtid_from_metadata()  # pylint: disable=protected-access
             assert gtid == "12345-67890-abcdef:1-100"
+
+    def test_extract_gtid_from_metadata_prefers_backup(self):
+        """Test GTID extraction prefers backup directory over original location."""
+        # Create a temporary directory and metadata files
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create dump_output subdirectory with original metadata
+            dump_output_dir = Path(temp_dir) / "dump_output"
+            dump_output_dir.mkdir()
+            original_metadata_file = dump_output_dir / "metadata"
+            with original_metadata_file.open('w') as f:
+                f.write("[source]\n")
+                f.write("executed_gtid_set = \"original-gtid:1-100\"\n")
+
+            # Create backup directory with backed up metadata
+            backup_dir = Path(temp_dir)
+            backup_metadata_file = backup_dir / "metadata"
+            with backup_metadata_file.open('w') as f:
+                f.write("[source]\n")
+                f.write("executed_gtid_set = \"backup-gtid:1-200\"\n")
+
+            # Mock both directories - create a mock TemporaryDirectory-like object
+            class MockTempDir:
+                def __init__(self, name):
+                    self.name = name
+
+            self.tool.temp_dir = MockTempDir(temp_dir)
+            self.tool.dump_output_dir = dump_output_dir
+
+            # Should prefer backup location
+            gtid = self.tool._extract_gtid_from_metadata()  # pylint: disable=protected-access
+            assert gtid == "backup-gtid:1-200"
 
     def test_extract_gtid_from_metadata_missing_file(self):
         """Test GTID extraction when metadata file is missing."""

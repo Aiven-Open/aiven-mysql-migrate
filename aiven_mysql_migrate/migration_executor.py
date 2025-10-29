@@ -3,6 +3,7 @@ from aiven_mysql_migrate.enums import MySQLMigrateTool
 from aiven_mysql_migrate.exceptions import MySQLDumpException, MySQLImportException
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, select_global_var, MydumperDumpProcessor
 from concurrent import futures
+from pathlib import Path
 from subprocess import Popen
 from typing import Callable, List, Optional
 
@@ -29,7 +30,9 @@ class ProcessExecutor:
         target: MySQLConnectionInfo,
         *,
         line_processor: Optional[Callable[[str], str]] = None,
-        dump_tool: MySQLMigrateTool = MySQLMigrateTool.mysqldump
+        dump_tool: MySQLMigrateTool = MySQLMigrateTool.mysqldump,
+        dump_output_dir: Optional[Path] = None,
+        backup_dir: Optional[Path] = None
     ) -> Optional[str]:
         """
         Execute dump and import commands with piping.
@@ -40,6 +43,8 @@ class ProcessExecutor:
             target: Target database connection info
             line_processor: Optional function to process each line from dump output
             dump_tool: The dump tool being used ("mysqldump" or "mydumper")
+            dump_output_dir: Optional path to dump output directory (for mydumper)
+            backup_dir: Optional path to backup directory (for mydumper metadata files)
 
         Returns:
             Tuple of (dump_exit_code, import_exit_code, extracted_gtid)
@@ -50,7 +55,10 @@ class ProcessExecutor:
         if line_processor:
             dump_processor = None
         elif dump_tool == MySQLMigrateTool.mydumper:
-            dump_processor = MydumperDumpProcessor()
+            dump_processor = MydumperDumpProcessor(
+                dump_output_dir=dump_output_dir,
+                backup_dir=backup_dir
+            )
         else:  # mysqldump (default)
             dump_processor = MySQLDumpProcessor()
         self.dump_proc = Popen(  # pylint: disable=consider-using-with

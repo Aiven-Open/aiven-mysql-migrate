@@ -162,7 +162,16 @@ class MyDumperTool(MySQLMigrationToolBase):
             GTID string for replication setup, or None
         """
         self.setup()
-        super().execute_migration(migration_method)
+        dump_cmd = self.get_dump_command(migration_method)
+        import_cmd = self.get_import_command(migration_method)
+        self._gtid = self.process_executor.execute_piped_commands(
+            dump_cmd=dump_cmd,
+            import_cmd=import_cmd,
+            target=self.target,
+            dump_tool=self.dump_tool_name,
+            dump_output_dir=self.dump_output_dir,
+            backup_dir=Path(self.temp_dir.name) if self.temp_dir else None
+        )
 
         # If we need GTID for replication, extract it from metadata file
         if migration_method == MySQLMigrateMethod.replication:
@@ -275,7 +284,7 @@ class MyDumperTool(MySQLMigrationToolBase):
             "--logfile",
             f"{self.temp_dir.name}/../myloader.log",
             "--verbose=4",
-            "--stream=NO_STREAM_AND_NO_DELETE",
+            "--stream=NO_STREAM",
             "--drop-table",
             "--drop-database",
             "--checksum",
@@ -293,11 +302,22 @@ class MyDumperTool(MySQLMigrationToolBase):
 
     def _extract_gtid_from_metadata(self) -> Optional[str]:
         """Extract GTID from mydumper metadata file."""
-        if not self.dump_output_dir:
-            return None
+        # Try backup directory first (where metadata files are copied during processing)
+        metadata_file = None
+        if self.temp_dir:
+            backup_metadata_file = Path(self.temp_dir.name) / "metadata"
+            if backup_metadata_file.exists():
+                metadata_file = backup_metadata_file
+                LOGGER.debug("Reading GTID from backed up metadata file: %s", backup_metadata_file)
 
-        metadata_file = self.dump_output_dir / "metadata"
-        if not metadata_file.exists():
+        # Fall back to original dump output directory
+        if not metadata_file and self.dump_output_dir:
+            original_metadata_file = self.dump_output_dir / "metadata"
+            if original_metadata_file.exists():
+                metadata_file = original_metadata_file
+                LOGGER.debug("Reading GTID from original metadata file: %s", original_metadata_file)
+
+        if not metadata_file or not metadata_file.exists():
             LOGGER.warning("mydumper metadata file not found")
             return None
 
