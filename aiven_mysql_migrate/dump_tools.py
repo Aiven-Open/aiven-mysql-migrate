@@ -301,20 +301,13 @@ class MyDumperTool(MySQLMigrationToolBase):
 
     def _extract_gtid_from_metadata(self) -> Optional[str]:
         """Extract GTID from mydumper metadata file."""
-        # Try backup directory first (where metadata files are copied during processing)
+        # Try backup directory (where metadata files are copied during processing)
         metadata_file = None
         if self.temp_dir:
             backup_metadata_file = Path(self.temp_dir.name) / "metadata"
             if backup_metadata_file.exists():
                 metadata_file = backup_metadata_file
                 LOGGER.debug("Reading GTID from backed up metadata file: %s", backup_metadata_file)
-
-        # Fall back to original dump output directory
-        if not metadata_file and self.dump_output_dir:
-            original_metadata_file = self.dump_output_dir / "metadata"
-            if original_metadata_file.exists():
-                metadata_file = original_metadata_file
-                LOGGER.debug("Reading GTID from original metadata file: %s", original_metadata_file)
 
         if not metadata_file or not metadata_file.exists():
             LOGGER.warning("mydumper metadata file not found")
