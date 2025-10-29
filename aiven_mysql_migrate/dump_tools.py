@@ -164,6 +164,8 @@ class MyDumperTool(MySQLMigrationToolBase):
         self.setup()
         dump_cmd = self.get_dump_command(migration_method)
         import_cmd = self.get_import_command(migration_method)
+        # LOGGER.debug("dump command: %s", " ".join(shlex.quote(arg) for arg in dump_cmd))
+        # LOGGER.debug("import command: %s", " ".join(shlex.quote(arg) for arg in import_cmd))
         self._gtid = self.process_executor.execute_piped_commands(
             dump_cmd=dump_cmd,
             import_cmd=import_cmd,
