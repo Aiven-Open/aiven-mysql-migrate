@@ -1,9 +1,13 @@
 from aiven_mysql_migrate.exceptions import WrongMigrationConfigurationException
-from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor
+from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, MydumperDumpProcessor
 from aiven_mysql_migrate.dump_tools import get_dump_tool
 from aiven_mysql_migrate.enums import MySQLMigrateMethod
+from pathlib import Path
 from pytest import mark, raises
 from typing import Optional, Type
+from unittest.mock import patch
+
+import tempfile
 
 
 @mark.parametrize(
@@ -285,3 +289,177 @@ def test_dump_tool_database_handling(tool_name):
         # mydumper uses regex to filter databases, so we just verify command generation
         assert len(dump_cmd) > 0
         assert "mydumper" in dump_cmd
+
+
+def test_mydumper_dump_processor_process_line_without_directories():
+    """Test that MydumperDumpProcessor passes through lines when directories are not set."""
+    processor = MydumperDumpProcessor()
+    line = "-- metadata 0"
+    assert processor.process_line(line) == line
+    assert processor.process_line("normal line") == "normal line"
+
+
+def test_mydumper_dump_processor_backs_up_metadata_file():
+    """Test that MydumperDumpProcessor backs up metadata files correctly."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dump_output_dir = Path(temp_dir) / "dump_output"
+        dump_output_dir.mkdir()
+        backup_dir = Path(temp_dir) / "backup"
+        backup_dir.mkdir()
+
+        # Create a test metadata file
+        metadata_file = dump_output_dir / "metadata"
+        metadata_content = "[source]\nexecuted_gtid_set = \"test-gtid\"\n"
+        metadata_file.write_text(metadata_content)
+
+        processor = MydumperDumpProcessor(
+            dump_output_dir=dump_output_dir,
+            backup_dir=backup_dir
+        )
+
+        # Process line that indicates metadata is ready
+        result = processor.process_line("-- metadata 0")
+        assert result == "-- metadata 0"
+
+        # Verify file was copied
+        backed_up_file = backup_dir / "metadata"
+        assert backed_up_file.exists()
+        assert backed_up_file.read_text() == metadata_content
+
+
+def test_mydumper_dump_processor_backs_up_metadata_partial_file():
+    """Test that MydumperDumpProcessor backs up metadata.partial.0 files."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dump_output_dir = Path(temp_dir) / "dump_output"
+        dump_output_dir.mkdir()
+        backup_dir = Path(temp_dir) / "backup"
+        backup_dir.mkdir()
+
+        # Create a test metadata.partial.0 file
+        metadata_partial_file = dump_output_dir / "metadata.partial.0"
+        metadata_content = "partial metadata content\n"
+        metadata_partial_file.write_text(metadata_content)
+
+        processor = MydumperDumpProcessor(
+            dump_output_dir=dump_output_dir,
+            backup_dir=backup_dir
+        )
+
+        # Process line that indicates metadata.partial.0 is ready
+        result = processor.process_line("-- metadata.partial.0 0")
+        assert result == "-- metadata.partial.0 0"
+
+        # Verify file was copied
+        backed_up_file = backup_dir / "metadata.partial.0"
+        assert backed_up_file.exists()
+        assert backed_up_file.read_text() == metadata_content
+
+
+def test_mydumper_dump_processor_backs_up_metadata_header_file():
+    """Test that MydumperDumpProcessor backs up metadata.header files."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dump_output_dir = Path(temp_dir) / "dump_output"
+        dump_output_dir.mkdir()
+        backup_dir = Path(temp_dir) / "backup"
+        backup_dir.mkdir()
+
+        # Create a test metadata.header file
+        metadata_header_file = dump_output_dir / "metadata.header"
+        metadata_content = "header content\n"
+        metadata_header_file.write_text(metadata_content)
+
+        processor = MydumperDumpProcessor(
+            dump_output_dir=dump_output_dir,
+            backup_dir=backup_dir
+        )
+
+        # Process line that indicates metadata.header is ready
+        result = processor.process_line("-- metadata.header 0")
+        assert result == "-- metadata.header 0"
+
+        # Verify file was copied
+        backed_up_file = backup_dir / "metadata.header"
+        assert backed_up_file.exists()
+        assert backed_up_file.read_text() == metadata_content
+
+
+def test_mydumper_dump_processor_handles_missing_file():
+    """Test that MydumperDumpProcessor handles missing metadata files gracefully."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dump_output_dir = Path(temp_dir) / "dump_output"
+        dump_output_dir.mkdir()
+        backup_dir = Path(temp_dir) / "backup"
+        backup_dir.mkdir()
+
+        processor = MydumperDumpProcessor(
+            dump_output_dir=dump_output_dir,
+            backup_dir=backup_dir
+        )
+
+        # Process line for non-existent file
+        with patch('aiven_mysql_migrate.utils.LOGGER') as mock_logger:
+            result = processor.process_line("-- metadata 0")
+            assert result == "-- metadata 0"
+            # Verify warning was logged
+            assert mock_logger.warning.called
+
+
+def test_mydumper_dump_processor_ignores_non_metadata_lines():
+    """Test that MydumperDumpProcessor ignores non-metadata lines."""
+    processor = MydumperDumpProcessor()
+    test_lines = [
+        "CREATE TABLE test (id INT);",
+        "-- some comment",
+        "-- metadata 0",  # This one would trigger if directories were set
+    ]
+
+    for line in test_lines:
+        result = processor.process_line(line)
+        assert result == line
+
+
+def test_mydumper_dump_processor_creates_backup_directory():
+    """Test that MydumperDumpProcessor creates backup directory if it doesn't exist."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dump_output_dir = Path(temp_dir) / "dump_output"
+        dump_output_dir.mkdir()
+        backup_dir = Path(temp_dir) / "backup"
+
+        # Create a test metadata file
+        metadata_file = dump_output_dir / "metadata"
+        metadata_file.write_text("test content\n")
+
+        processor = MydumperDumpProcessor(
+            dump_output_dir=dump_output_dir,
+            backup_dir=backup_dir
+        )
+
+        # Process line - backup_dir doesn't exist yet
+        result = processor.process_line("-- metadata 0")
+        assert result == "-- metadata 0"
+
+        # Verify backup directory was created and file was copied
+        assert backup_dir.exists()
+        backed_up_file = backup_dir / "metadata"
+        assert backed_up_file.exists()
+
+
+def test_mydumper_dump_processor_ignores_non_metadata_filename():
+    """Test that MydumperDumpProcessor ignores lines starting with '-- metadata' but not matching metadata files."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dump_output_dir = Path(temp_dir) / "dump_output"
+        dump_output_dir.mkdir()
+        backup_dir = Path(temp_dir) / "backup"
+        backup_dir.mkdir()
+
+        processor = MydumperDumpProcessor(
+            dump_output_dir=dump_output_dir,
+            backup_dir=backup_dir
+        )
+
+        # Process line with non-metadata filename
+        result = processor.process_line("-- metadataother 0")
+        assert result == "-- metadataother 0"
+
+        # Verify no files were created in backup directory
+        assert len(list(backup_dir.iterdir())) == 0

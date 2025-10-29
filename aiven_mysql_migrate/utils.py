@@ -4,12 +4,17 @@ from abc import ABCMeta, abstractmethod
 from aiven_mysql_migrate import config
 from aiven_mysql_migrate.exceptions import WrongMigrationConfigurationException
 from dataclasses import dataclass
+from pathlib import Path
 from typing import AnyStr, Dict, List, Optional
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import contextlib
+import logging
 import pymysql
 import re
+import shutil
+
+LOGGER = logging.getLogger(__name__)
 
 DEFAULT_MYSQL_PORT = 3306
 ALLOWED_OPTIONS = {"ssl-mode"}
@@ -191,8 +196,55 @@ class DumpProcessor(metaclass=ABCMeta):
 
 
 class MydumperDumpProcessor(DumpProcessor):
+    def __init__(self, dump_output_dir: Optional[Path] = None, backup_dir: Optional[Path] = None):
+        super().__init__()
+        self.dump_output_dir = dump_output_dir
+        self.backup_dir = backup_dir
+
     def process_line(self, line: str) -> str:
+        # metadata file is ready
+        if line and line.startswith("-- metadata"):
+            self._backup_metadata_file(line)
         return line
+
+    def _backup_metadata_file(self, line: str) -> None:
+        """
+        Backup metadata file when mydumper indicates it's ready.
+
+        Args:
+            line: Line from mydumper output in format "-- <filename> <number>"
+        """
+        if not self.dump_output_dir or not self.backup_dir:
+            return
+
+        try:
+            # Parse filename from line: "-- metadata.partial.0 0" -> "metadata.partial.0"
+            parts = line.strip().split()
+            if len(parts) < 2:
+                return
+
+            filename = parts[1]
+
+            if not filename.startswith("metadata"):
+                return
+
+            source_file = self.dump_output_dir / filename
+            if not source_file.exists():
+                LOGGER.warning(
+                    "Metadata file %s not found in dump output directory, skipping backup", filename
+                )
+                return
+
+            self.backup_dir.mkdir(parents=True, exist_ok=True)
+
+            dest_file = self.backup_dir / filename
+            shutil.copy2(source_file, dest_file)
+            LOGGER.info("Backed up metadata file %s to %s", filename, dest_file)
+
+        except (FileNotFoundError, PermissionError, OSError) as e:
+            LOGGER.warning(
+                "Failed to backup metadata file from line %r: %s", line.strip(), e
+            )
 
 
 class MySQLDumpProcessor(DumpProcessor):
