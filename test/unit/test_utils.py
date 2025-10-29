@@ -463,3 +463,47 @@ def test_mydumper_dump_processor_ignores_non_metadata_filename():
 
         # Verify no files were created in backup directory
         assert len(list(backup_dir.iterdir())) == 0
+
+
+def test_mydumper_dump_processor_ignores_database_files_from_metadata_database():
+    """Test that MydumperDumpProcessor ignores database files from database named 'metadata'."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dump_output_dir = Path(temp_dir) / "dump_output"
+        dump_output_dir.mkdir()
+        backup_dir = Path(temp_dir) / "backup"
+        backup_dir.mkdir()
+
+        # Create test database files (these should NOT be backed up)
+        database_file_sql = dump_output_dir / "metadata.table1.00000.sql.zst"
+        database_file_sql.write_bytes(b"fake sql content")
+        database_file_schema = dump_output_dir / "metadata.test-schema.sql.zst"
+        database_file_schema.write_bytes(b"fake schema content")
+        database_file_dat = dump_output_dir / "metadata.table1.dat.zst"
+        database_file_dat.write_bytes(b"fake dat content")
+
+        processor = MydumperDumpProcessor(
+            dump_output_dir=dump_output_dir,
+            backup_dir=backup_dir
+        )
+
+        # Process lines with database file names (these should be ignored)
+        result1 = processor.process_line("-- metadata.table1.00000.sql.zst 0")
+        assert result1 == "-- metadata.table1.00000.sql.zst 0"
+        result2 = processor.process_line("-- metadata.test-schema.sql.zst 0")
+        assert result2 == "-- metadata.test-schema.sql.zst 0"
+        result3 = processor.process_line("-- metadata.table1.dat.zst 0")
+        assert result3 == "-- metadata.table1.dat.zst 0"
+
+        # Verify no database files were backed up
+        assert len(list(backup_dir.iterdir())) == 0
+
+        # But verify actual metadata files would still be backed up
+        metadata_file = dump_output_dir / "metadata"
+        metadata_content = "[source]\nexecuted_gtid_set = \"test-gtid\"\n"
+        metadata_file.write_text(metadata_content)
+
+        result4 = processor.process_line("-- metadata 0")
+        assert result4 == "-- metadata 0"
+        backed_up_file = backup_dir / "metadata"
+        assert backed_up_file.exists()
+        assert backed_up_file.read_text() == metadata_content

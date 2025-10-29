@@ -228,6 +228,11 @@ class MydumperDumpProcessor(DumpProcessor):
             if not filename.startswith("metadata"):
                 return
 
+            suffixes = Path(filename).suffixes
+            if ".sql" in suffixes or ".dat" in suffixes:
+                # This is a database file, not a metadata file
+                return
+
             source_file = self.dump_output_dir / filename
             if not source_file.exists():
                 LOGGER.warning(
