@@ -234,11 +234,7 @@ class MydumperDumpProcessor(DumpProcessor):
                 return
 
             source_file = self.dump_output_dir / filename
-            if not source_file.exists():
-                LOGGER.warning(
-                    "Metadata file %s not found in dump output directory, skipping backup", filename
-                )
-                return
+            assert source_file.exists(), f"Metadata file {filename} not found in dump output directory"
 
             self.backup_dir.mkdir(parents=True, exist_ok=True)
 

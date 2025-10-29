@@ -5,7 +5,6 @@ from aiven_mysql_migrate.enums import MySQLMigrateMethod
 from pathlib import Path
 from pytest import mark, raises
 from typing import Optional, Type
-from unittest.mock import patch
 
 import tempfile
 
@@ -384,7 +383,7 @@ def test_mydumper_dump_processor_backs_up_metadata_header_file():
 
 
 def test_mydumper_dump_processor_handles_missing_file():
-    """Test that MydumperDumpProcessor handles missing metadata files gracefully."""
+    """Test that MydumperDumpProcessor raises AssertionError for missing metadata files."""
     with tempfile.TemporaryDirectory() as temp_dir:
         dump_output_dir = Path(temp_dir) / "dump_output"
         dump_output_dir.mkdir()
@@ -396,12 +395,9 @@ def test_mydumper_dump_processor_handles_missing_file():
             backup_dir=backup_dir
         )
 
-        # Process line for non-existent file
-        with patch('aiven_mysql_migrate.utils.LOGGER') as mock_logger:
-            result = processor.process_line("-- metadata 0")
-            assert result == "-- metadata 0"
-            # Verify warning was logged
-            assert mock_logger.warning.called
+        # Process line for non-existent file - should raise AssertionError
+        with raises(AssertionError, match="Metadata file metadata not found"):
+            processor.process_line("-- metadata 0")
 
 
 def test_mydumper_dump_processor_ignores_non_metadata_lines():
@@ -445,21 +441,25 @@ def test_mydumper_dump_processor_creates_backup_directory():
 
 
 def test_mydumper_dump_processor_ignores_non_metadata_filename():
-    """Test that MydumperDumpProcessor ignores lines starting with '-- metadata' but not matching metadata files."""
+    """Test that MydumperDumpProcessor ignores lines with filenames that don't start with 'metadata'."""
     with tempfile.TemporaryDirectory() as temp_dir:
         dump_output_dir = Path(temp_dir) / "dump_output"
         dump_output_dir.mkdir()
         backup_dir = Path(temp_dir) / "backup"
         backup_dir.mkdir()
 
+        # Create a file that doesn't start with "metadata"
+        other_file = dump_output_dir / "otherfile"
+        other_file.write_text("test content\n")
+
         processor = MydumperDumpProcessor(
             dump_output_dir=dump_output_dir,
             backup_dir=backup_dir
         )
 
-        # Process line with non-metadata filename
-        result = processor.process_line("-- metadataother 0")
-        assert result == "-- metadataother 0"
+        # Process line with filename that doesn't start with "metadata" - should be ignored
+        result = processor.process_line("-- otherfile 0")
+        assert result == "-- otherfile 0"
 
         # Verify no files were created in backup directory
         assert len(list(backup_dir.iterdir())) == 0
