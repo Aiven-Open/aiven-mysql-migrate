@@ -9,6 +9,7 @@ from aiven_mysql_migrate.utils import MySQLConnectionInfo
 from pathlib import Path
 from typing import List, Optional
 
+import configparser
 import logging
 import os
 import shlex
@@ -300,12 +301,16 @@ class MyDumperTool(MySQLMigrationToolBase):
             LOGGER.warning("mydumper metadata file not found")
             return None
 
-        with metadata_file.open('r') as f:
-            for line in f:
-                if line.startswith("executed_gtid_set ="):
-                    gtid = line.split("=", 1)[1].strip().strip('"')
-                    LOGGER.info("Extracted GTID from mydumper metadata: %s", gtid)
-                    return gtid
+        config = configparser.ConfigParser()
+        try:
+            config.read(metadata_file)
+            if config.has_option("source", "executed_gtid_set"):
+                gtid = config.get("source", "executed_gtid_set").strip('"')
+                LOGGER.info("Extracted GTID from mydumper metadata: %s", gtid)
+                return gtid
+        except configparser.Error as e:
+            LOGGER.warning("Failed to parse mydumper metadata file: %s", e)
+            return None
 
         return None
 

@@ -288,7 +288,8 @@ class TestMyDumperTool:
             dump_output_dir.mkdir()
             metadata_file = dump_output_dir / "metadata"
             with metadata_file.open('w') as f:
-                f.write("executed_gtid_set = 12345-67890-abcdef:1-100\n")
+                f.write("[source]\n")
+                f.write("executed_gtid_set = \"12345-67890-abcdef:1-100\"\n")
                 f.write("OTHER_LINE = value\n")
 
             # Mock the dump_output_dir
@@ -313,6 +314,7 @@ class TestMyDumperTool:
             dump_output_dir.mkdir()
             metadata_file = dump_output_dir / "metadata"
             with metadata_file.open('w') as f:
+                f.write("[source]\n")
                 f.write("OTHER_LINE=value\n")
                 f.write("ANOTHER_LINE=another_value\n")
 
