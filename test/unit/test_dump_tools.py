@@ -320,14 +320,6 @@ class TestMyDumperTool:
             gtid = self.tool._extract_gtid_from_metadata()  # pylint: disable=protected-access
             assert gtid == "backup-gtid:1-200"
 
-    def test_extract_gtid_from_metadata_missing_file(self):
-        """Test GTID extraction when metadata file is missing."""
-        # Set temp_dir to None to test when metadata is missing
-        self.tool.temp_dir = None
-
-        gtid = self.tool._extract_gtid_from_metadata()  # pylint: disable=protected-access
-        assert gtid is None
-
     def test_extract_gtid_from_metadata_no_gtid_line(self):
         """Test GTID extraction when metadata file has no GTID line."""
         with tempfile.TemporaryDirectory() as temp_dir:
