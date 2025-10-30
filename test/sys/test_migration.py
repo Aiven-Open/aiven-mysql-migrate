@@ -61,7 +61,7 @@ def test_migration_replication(
     with dst.cur() as cur:
         cur.execute("STOP REPLICA FOR CHANNEL ''")
     with src.cur() as cur:
-        cur.execute(f"CREATE DATABASE {db_name}")
+        cur.execute(f"CREATE DATABASE `{db_name}`")
         cur.execute(f"USE {db_name}")
         cur.execute("CREATE TABLE test (ID TEXT)")
         cur.execute("INSERT INTO test (ID) VALUES (%s)", ["test_data"])
@@ -115,7 +115,7 @@ def test_migration_replication(
 )
 def test_migration_fallback(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, dump_tool: str, db_name: str) -> None:
     with src.cur() as cur:
-        cur.execute(f"CREATE DATABASE {db_name}")
+        cur.execute(f"CREATE DATABASE `{db_name}`")
         cur.execute(f"USE {db_name}")
         cur.execute("CREATE TABLE test (ID TEXT)")
         cur.execute("INSERT INTO test (ID) VALUES (%s)", ["test_data"])
@@ -162,7 +162,7 @@ def test_force_migration_method(  # pylint: disable=too-many-positional-argument
     src, dst, forced_method, context, dump_tool, db_name
 ):
     with src.cur() as cur:
-        cur.execute(f"CREATE DATABASE {db_name}")
+        cur.execute(f"CREATE DATABASE `{db_name}`")
         cur.execute(f"USE {db_name}")
         cur.execute("CREATE TABLE test (ID TEXT)")
         cur.execute("INSERT INTO test (ID) VALUES (%s)", ["test_data"])
@@ -199,7 +199,7 @@ def test_database_size_check(src, dst, dump_tool, db_name):
         other_test_dbs = {table_schema["TABLE_SCHEMA"] for table_schema in cur.fetchall()}
 
     with src.cur() as cur:
-        cur.execute(f"CREATE DATABASE {db_name}")
+        cur.execute(f"CREATE DATABASE `{db_name}`")
         cur.execute(f"USE {db_name}")
         cur.execute("CREATE TABLE test (ID TEXT)")
         cur.execute("INSERT INTO test (ID) VALUES (%s)", ["test_data"])
@@ -237,7 +237,7 @@ def test_database_ssl_disabled(src, dst, dump_tool, db_name):
     ignore_dbs.add(db_name)
 
     with src.cur() as cur:
-        cur.execute(f"CREATE DATABASE {db_name}")
+        cur.execute(f"CREATE DATABASE `{db_name}`")
         cur.execute(f"USE {db_name}")
         cur.execute("CREATE TABLE test (ID TEXT)")
 
