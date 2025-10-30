@@ -203,7 +203,7 @@ class MydumperDumpProcessor(DumpProcessor):
 
     def process_line(self, line: str) -> str:
         # metadata file is ready
-        if line and line.startswith("-- metadata"):
+        if line and line.startswith("-- metadata "):
             self._backup_metadata_file(line)
         return line
 
@@ -217,35 +217,14 @@ class MydumperDumpProcessor(DumpProcessor):
         if not self.dump_output_dir or not self.backup_dir:
             return
 
-        try:
-            # Parse filename from line: "-- metadata.partial.0 0" -> "metadata.partial.0"
-            parts = line.strip().split()
-            if len(parts) < 2:
-                return
+        source_file = self.dump_output_dir / "metadata"
+        assert source_file.exists(), "Metadata file not found in dump output directory"
 
-            filename = parts[1]
+        self.backup_dir.mkdir(parents=True, exist_ok=True)
 
-            if not filename.startswith("metadata"):
-                return
-
-            suffixes = Path(filename).suffixes
-            if ".sql" in suffixes or ".dat" in suffixes:
-                # This is a database file, not a metadata file
-                return
-
-            source_file = self.dump_output_dir / filename
-            assert source_file.exists(), f"Metadata file {filename} not found in dump output directory"
-
-            self.backup_dir.mkdir(parents=True, exist_ok=True)
-
-            dest_file = self.backup_dir / filename
-            shutil.copy2(source_file, dest_file)
-            LOGGER.info("Backed up metadata file %s to %s", filename, dest_file)
-
-        except (FileNotFoundError, PermissionError, OSError) as e:
-            LOGGER.warning(
-                "Failed to backup metadata file from line %r: %s", line.strip(), e
-            )
+        dest_file = self.backup_dir / "metadata"
+        shutil.copy2(source_file, dest_file)
+        LOGGER.info("Backed up metadata file")
 
 
 class MySQLDumpProcessor(DumpProcessor):

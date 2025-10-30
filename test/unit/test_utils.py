@@ -348,10 +348,9 @@ def test_mydumper_dump_processor_backs_up_metadata_partial_file():
         result = processor.process_line("-- metadata.partial.0 0")
         assert result == "-- metadata.partial.0 0"
 
-        # Verify file was copied
+        # Verify file was not copied
         backed_up_file = backup_dir / "metadata.partial.0"
-        assert backed_up_file.exists()
-        assert backed_up_file.read_text() == metadata_content
+        assert not backed_up_file.exists()
 
 
 def test_mydumper_dump_processor_backs_up_metadata_header_file():
@@ -378,8 +377,7 @@ def test_mydumper_dump_processor_backs_up_metadata_header_file():
 
         # Verify file was copied
         backed_up_file = backup_dir / "metadata.header"
-        assert backed_up_file.exists()
-        assert backed_up_file.read_text() == metadata_content
+        assert not backed_up_file.exists()
 
 
 def test_mydumper_dump_processor_handles_missing_file():
@@ -396,7 +394,7 @@ def test_mydumper_dump_processor_handles_missing_file():
         )
 
         # Process line for non-existent file - should raise AssertionError
-        with raises(AssertionError, match="Metadata file metadata not found"):
+        with raises(AssertionError, match="Metadata file not found in dump output directory"):
             processor.process_line("-- metadata 0")
 
 
