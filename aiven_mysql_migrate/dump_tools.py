@@ -140,15 +140,9 @@ class MyDumperTool(MySQLMigrationToolBase):
         """Setup temporary resources for migration."""
 
         if not self.temp_dir:
-            self.temp_dir = self._create_temp_directory()
-
-        if not self.temp_cnf_file:
+            self.temp_dir = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
             self.temp_cnf_file = self._create_temp_cnf_file(self.source, "source.cnf")
-
-        if not self.temp_target_cnf_file:
             self.temp_target_cnf_file = self._create_temp_cnf_file(self.target, "target.cnf")
-
-        if not self.dump_output_dir:
             self.dump_output_dir = self._get_dump_output_dir()
 
     def execute_migration(self, migration_method: MySQLMigrateMethod) -> Optional[str]:
@@ -187,9 +181,7 @@ class MyDumperTool(MySQLMigrationToolBase):
 
     def _create_temp_cnf_file(self, connection_info: MySQLConnectionInfo, filename: str = "connection.cnf") -> Path:
         """Create temporary .cnf file with credentials for secure password handling."""
-        if not self.temp_dir:
-            self.temp_dir = self._create_temp_directory()
-
+        assert self.temp_dir is not None, "Temporary directory must be created before creating cnf file"
         temp_cnf_path = Path(self.temp_dir.name) / filename
 
         with temp_cnf_path.open('w') as temp_cnf:
@@ -209,16 +201,10 @@ class MyDumperTool(MySQLMigrationToolBase):
         os.chmod(temp_cnf_path, 0o600)
         return temp_cnf_path
 
-    def _create_temp_directory(self) -> tempfile.TemporaryDirectory:
-        """Create temporary directory for dump output."""
-        return tempfile.TemporaryDirectory()
-
     def _get_dump_output_dir(self) -> Path:
         """Get or create the dump output directory (subdirectory of temp_dir)."""
-        if not self.temp_dir:
-            self.temp_dir = self._create_temp_directory()
-
         if not self.dump_output_dir:
+            assert self.temp_dir is not None, "temp_dir must exist at this point"
             self.dump_output_dir = Path(self.temp_dir.name) / "dump_output"
             self.dump_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -228,7 +214,6 @@ class MyDumperTool(MySQLMigrationToolBase):
         """Build mydumper command."""
         assert self.temp_cnf_file is not None, "setup() must be called before get_dump_command()"
         assert self.dump_output_dir is not None, "setup() must be called before get_dump_command()"
-        assert self.temp_dir is not None, "temp_dir must exist at this point"
 
         cmd = [
             "mydumper",
@@ -267,7 +252,6 @@ class MyDumperTool(MySQLMigrationToolBase):
         """Build myloader command."""
         assert self.temp_target_cnf_file is not None, "setup() must be called before get_import_command()"
         assert self.dump_output_dir is not None, "setup() must be called before get_import_command()"
-        assert self.temp_dir is not None, "temp_dir must exist at this point"
 
         cmd = [
             "myloader",
@@ -323,10 +307,9 @@ class MyDumperTool(MySQLMigrationToolBase):
     def cleanup(self) -> None:
         """Cleanup temporary resources."""
         super().cleanup()
-
-        if self.temp_dir:
-            self.temp_dir.cleanup()
-            self.temp_dir = None
+        assert self.temp_dir is not None, "Temporary directory not initialized"
+        self.temp_dir.cleanup()
+        self.temp_dir = None
 
         self.temp_cnf_file = None
         self.temp_target_cnf_file = None
