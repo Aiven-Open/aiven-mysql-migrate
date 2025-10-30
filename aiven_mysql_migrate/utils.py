@@ -196,7 +196,7 @@ class DumpProcessor(metaclass=ABCMeta):
 
 
 class MydumperDumpProcessor(DumpProcessor):
-    def __init__(self, dump_output_dir: Optional[Path] = None, backup_dir: Optional[Path] = None):
+    def __init__(self, dump_output_dir: Path, backup_dir: Path):
         super().__init__()
         self.dump_output_dir = dump_output_dir
         self.backup_dir = backup_dir
@@ -214,9 +214,6 @@ class MydumperDumpProcessor(DumpProcessor):
         Args:
             line: Line from mydumper output in format "-- <filename> <number>"
         """
-        if not self.dump_output_dir or not self.backup_dir:
-            return
-
         source_file = self.dump_output_dir / "metadata"
         assert source_file.exists(), "Metadata file not found in dump output directory"
 
