@@ -292,15 +292,11 @@ class MyDumperTool(MySQLMigrationToolBase):
         LOGGER.debug("Reading GTID from backed up metadata file: %s", metadata_file)
 
         config = configparser.ConfigParser()
-        try:
-            config.read(metadata_file)
-            if config.has_option("source", "executed_gtid_set"):
-                gtid = config.get("source", "executed_gtid_set").strip('"')
-                LOGGER.info("Extracted GTID from mydumper metadata: %s", gtid)
-                return gtid
-        except configparser.Error as e:
-            LOGGER.warning("Failed to parse mydumper metadata file: %s", e)
-            return None
+        config.read(metadata_file)
+        if config.has_option("source", "executed_gtid_set"):
+            gtid = config.get("source", "executed_gtid_set").strip('"')
+            LOGGER.info("Extracted GTID from mydumper metadata: %s", gtid)
+            return gtid
 
         return None
 

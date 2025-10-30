@@ -55,6 +55,10 @@ class ProcessExecutor:
         if line_processor:
             dump_processor = None
         elif dump_tool == MySQLMigrateTool.mydumper:
+            assert dump_output_dir is not None and backup_dir is not None, (
+                "dump_output_dir and backup_dir must be provided when using mydumper"
+            )
+
             dump_processor = MydumperDumpProcessor(
                 dump_output_dir=dump_output_dir,
                 backup_dir=backup_dir

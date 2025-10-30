@@ -290,14 +290,6 @@ def test_dump_tool_database_handling(tool_name):
         assert "mydumper" in dump_cmd
 
 
-def test_mydumper_dump_processor_process_line_without_directories():
-    """Test that MydumperDumpProcessor passes through lines when directories are not set."""
-    processor = MydumperDumpProcessor()
-    line = "-- metadata 0"
-    assert processor.process_line(line) == line
-    assert processor.process_line("normal line") == "normal line"
-
-
 def test_mydumper_dump_processor_backs_up_metadata_file():
     """Test that MydumperDumpProcessor backs up metadata files correctly."""
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -400,16 +392,27 @@ def test_mydumper_dump_processor_handles_missing_file():
 
 def test_mydumper_dump_processor_ignores_non_metadata_lines():
     """Test that MydumperDumpProcessor ignores non-metadata lines."""
-    processor = MydumperDumpProcessor()
-    test_lines = [
-        "CREATE TABLE test (id INT);",
-        "-- some comment",
-        "-- metadata 0",  # This one would trigger if directories were set
-    ]
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dump_output_dir = Path(temp_dir) / "dump_output"
+        dump_output_dir.mkdir()
+        backup_dir = Path(temp_dir) / "backup"
+        backup_dir.mkdir()
 
-    for line in test_lines:
-        result = processor.process_line(line)
-        assert result == line
+        # Create a test metadata file
+        metadata_file = dump_output_dir / "metadata"
+        metadata_file.write_text("test content\n")
+
+        processor = MydumperDumpProcessor(
+            dump_output_dir=dump_output_dir, backup_dir=backup_dir)
+        test_lines = [
+            "CREATE TABLE test (id INT);",
+            "-- some comment",
+            "-- metadata 0",  # This one would trigger if directories were set
+        ]
+
+        for line in test_lines:
+            result = processor.process_line(line)
+            assert result == line
 
 
 def test_mydumper_dump_processor_creates_backup_directory():
