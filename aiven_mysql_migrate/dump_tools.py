@@ -3,9 +3,9 @@ import textwrap
 from abc import ABC, abstractmethod
 
 from aiven_mysql_migrate.enums import MySQLMigrateTool, MySQLMigrateMethod
-from aiven_mysql_migrate.exceptions import DumpToolNotFoundError, ReplicaSetupException
+from aiven_mysql_migrate.exceptions import ReplicaSetupException
 from aiven_mysql_migrate.migration_executor import ProcessExecutor
-from aiven_mysql_migrate.utils import MySQLConnectionInfo
+from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, MydumperDumpProcessor
 from pathlib import Path
 from typing import List, Optional
 
@@ -13,7 +13,6 @@ import configparser
 import logging
 import os
 import shlex
-import subprocess
 import tempfile
 
 LOGGER = logging.getLogger(__name__)
@@ -58,8 +57,13 @@ class MySQLMigrationToolBase(ABC):
         """
         dump_cmd = self.get_dump_command(migration_method)
         import_cmd = self.get_import_command(migration_method)
+        dump_processor = MySQLDumpProcessor()
         self._gtid = self.process_executor.execute_piped_commands(
-            dump_cmd=dump_cmd, import_cmd=import_cmd, target=self.target, dump_tool=self.dump_tool_name
+            dump_cmd=dump_cmd,
+            import_cmd=import_cmd,
+            target=self.target,
+            dump_tool=self.dump_tool_name,
+            dump_processor=dump_processor
         )
         return self._gtid
 
@@ -160,13 +164,17 @@ class MyDumperTool(MySQLMigrationToolBase):
         import_cmd = self.get_import_command(migration_method)
         # LOGGER.debug("dump command: %s", " ".join(shlex.quote(arg) for arg in dump_cmd))
         # LOGGER.debug("import command: %s", " ".join(shlex.quote(arg) for arg in import_cmd))
+        assert self.dump_output_dir and self.temp_dir is not None
+        dump_processor = MydumperDumpProcessor(
+            dump_output_dir=self.dump_output_dir,
+            backup_dir=Path(self.temp_dir.name)
+        )
         self._gtid = self.process_executor.execute_piped_commands(
             dump_cmd=dump_cmd,
             import_cmd=import_cmd,
             target=self.target,
             dump_tool=self.dump_tool_name,
-            dump_output_dir=self.dump_output_dir,
-            backup_dir=Path(self.temp_dir.name) if self.temp_dir else None
+            dump_processor=dump_processor
         )
 
         # If we need GTID for replication, extract it from metadata file
@@ -275,14 +283,6 @@ class MyDumperTool(MySQLMigrationToolBase):
 
         return cmd
 
-    def _check_tools_available(self) -> None:
-        """Check if mydumper and myloader are available in PATH."""
-        for tool in ["mydumper", "myloader"]:
-            try:
-                subprocess.run([tool, "--version"], capture_output=True, check=True)
-            except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-                raise DumpToolNotFoundError(f"{tool} not found in PATH") from exc
-
     def _extract_gtid_from_metadata(self) -> Optional[str]:
         """Extract GTID from mydumper metadata file."""
         # Read from backup directory (where metadata files are copied during processing)
@@ -293,8 +293,8 @@ class MyDumperTool(MySQLMigrationToolBase):
 
         config = configparser.ConfigParser()
         config.read(metadata_file)
-        if config.has_option("source", "executed_gtid_set"):
-            gtid = config.get("source", "executed_gtid_set").strip('"')
+        if gtid := config.get("source", "executed_gtid_set", fallback=None):
+            gtid = gtid.strip('"')
             LOGGER.info("Extracted GTID from mydumper metadata: %s", gtid)
             return gtid
 
@@ -303,12 +303,12 @@ class MyDumperTool(MySQLMigrationToolBase):
     def cleanup(self) -> None:
         """Cleanup temporary resources."""
         super().cleanup()
-        assert self.temp_dir is not None, "Temporary directory not initialized"
-        self.temp_dir.cleanup()
-        self.temp_dir = None
+        if self.temp_dir:
+            self.temp_dir.cleanup()
+            self.temp_dir = None
 
-        self.temp_cnf_file = None
-        self.temp_target_cnf_file = None
+            self.temp_cnf_file = None
+            self.temp_target_cnf_file = None
 
 
 def get_dump_tool(
