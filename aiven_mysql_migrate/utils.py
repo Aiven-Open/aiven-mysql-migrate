@@ -215,7 +215,7 @@ class MydumperDumpProcessor(DumpProcessor):
     def _extract_gtid_from_metadata(self) -> Optional[str]:
         """Extract GTID from mydumper metadata file."""
         metadata_file = self.dump_output_dir / "metadata"
-        LOGGER.debug("Reading GTID from backed up metadata file: %s", metadata_file)
+        LOGGER.debug("Reading GTID from metadata file: %s", metadata_file)
         metadata_parser = configparser.ConfigParser()
         metadata_parser.read(metadata_file)
         if gtid := metadata_parser.get("source", "executed_gtid_set", fallback=None):

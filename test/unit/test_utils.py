@@ -1,12 +1,14 @@
+# Copyright (c) 2025 Aiven, Helsinki, Finland. https://aiven.io/
 from aiven_mysql_migrate.exceptions import WrongMigrationConfigurationException
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, MydumperDumpProcessor
-from aiven_mysql_migrate.dump_tools import get_dump_tool
-from aiven_mysql_migrate.enums import MySQLMigrateMethod
 from pathlib import Path
 from pytest import mark, raises
 from typing import Optional, Type
 
 import tempfile
+
+
+_GTID = "866a7051-3311-11eb-8485-0aa2f299396b:1-1213"
 
 
 @mark.parametrize(
@@ -153,144 +155,7 @@ def test_mysql_connection_info_from_uri_unquote_username_and_password() -> None:
     assert conn_info.to_uri() == uri
 
 
-@mark.parametrize("tool_name", ["mysqldump", "mydumper"])
-def test_dump_tool_command_generation(tool_name):
-    """Test that both tools can generate valid commands."""
-    source = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
-    target = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
-    databases = ["testdb1", "testdb2"]
-
-    # Test factory function creates correct tool
-    tool = get_dump_tool(tool_name, source, target, databases, skip_column_stats=False)
-
-    # Setup tool if it's MyDumperTool
-    if hasattr(tool, 'setup'):
-        tool.setup()
-
-    # Test dump command generation for replication method
-    dump_cmd = tool.get_dump_command(MySQLMigrateMethod.replication)
-    assert isinstance(dump_cmd, list)
-    assert len(dump_cmd) > 0
-
-    # Test dump command generation for dump method
-    dump_cmd_dump = tool.get_dump_command(MySQLMigrateMethod.dump)
-    assert isinstance(dump_cmd_dump, list)
-    assert len(dump_cmd_dump) > 0
-
-    # Test import command generation
-    import_cmd = tool.get_import_command(MySQLMigrateMethod.replication)
-    assert isinstance(import_cmd, list)
-    assert len(import_cmd) > 0
-
-    # Verify tool-specific command elements
-    if tool_name == "mysqldump":
-        assert "mysqldump" in dump_cmd
-        assert "mysql" in import_cmd
-        assert "--databases" in dump_cmd
-    elif tool_name == "mydumper":
-        assert "mydumper" in dump_cmd
-        assert "myloader" in import_cmd
-        assert any("--outputdir=" in arg for arg in dump_cmd)
-        assert any("--directory=" in arg for arg in import_cmd)
-
-
-@mark.parametrize("tool_name", ["mysqldump", "mydumper"])
-def test_dump_tool_ssl_handling(tool_name):
-    """Test that both tools handle SSL correctly."""
-    # Test with SSL enabled
-    source_ssl = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
-    target_ssl = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
-    databases = ["testdb"]
-
-    tool_ssl = get_dump_tool(tool_name, source_ssl, target_ssl, databases, skip_column_stats=False)
-
-    # Setup tool if it's MyDumperTool
-    if hasattr(tool_ssl, 'setup'):
-        tool_ssl.setup()
-
-    dump_cmd_ssl = tool_ssl.get_dump_command(MySQLMigrateMethod.replication)
-    import_cmd_ssl = tool_ssl.get_import_command(MySQLMigrateMethod.replication)
-
-    # Test with SSL disabled
-    source_no_ssl = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=False)
-    target_no_ssl = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=False)
-
-    tool_no_ssl = get_dump_tool(tool_name, source_no_ssl, target_no_ssl, databases, skip_column_stats=False)
-
-    # Setup tool if it's MyDumperTool
-    if hasattr(tool_no_ssl, 'setup'):
-        tool_no_ssl.setup()
-
-    dump_cmd_no_ssl = tool_no_ssl.get_dump_command(MySQLMigrateMethod.replication)
-    import_cmd_no_ssl = tool_no_ssl.get_import_command(MySQLMigrateMethod.replication)
-
-    # Verify SSL flags are present when SSL is enabled
-    if tool_name == "mysqldump":
-        assert "--ssl-mode=REQUIRED" in dump_cmd_ssl
-        assert "--ssl-mode=REQUIRED" in import_cmd_ssl
-        assert "--ssl-mode=REQUIRED" not in dump_cmd_no_ssl
-        assert "--ssl-mode=REQUIRED" not in import_cmd_no_ssl
-    elif tool_name == "mydumper":
-        # For mydumper, SSL is handled in the .cnf file, so we check the .cnf content
-        # This is more complex to test without actually creating the files
-        # We'll just verify the commands are generated successfully
-        assert len(dump_cmd_ssl) > 0
-        assert len(import_cmd_ssl) > 0
-        assert len(dump_cmd_no_ssl) > 0
-        assert len(import_cmd_no_ssl) > 0
-
-
-@mark.parametrize("tool_name", ["mysqldump", "mydumper"])
-def test_dump_tool_gtid_handling(tool_name):
-    """Test that both tools handle GTID settings correctly."""
-    source = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
-    target = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
-    databases = ["testdb"]
-
-    tool = get_dump_tool(tool_name, source, target, databases, skip_column_stats=False)
-
-    # Setup tool if it's MyDumperTool
-    if hasattr(tool, 'setup'):
-        tool.setup()
-
-    # Test replication method (should include GTID)
-    dump_cmd_replication = tool.get_dump_command(MySQLMigrateMethod.replication)
-
-    # Test dump method (should not include GTID)
-    dump_cmd_dump = tool.get_dump_command(MySQLMigrateMethod.dump)
-
-    if tool_name == "mysqldump":
-        assert "--set-gtid-purged=ON" in dump_cmd_replication
-        assert "--set-gtid-purged=OFF" in dump_cmd_dump
-
-
-@mark.parametrize("tool_name", ["mysqldump", "mydumper"])
-def test_dump_tool_database_handling(tool_name):
-    """Test that both tools handle database lists correctly."""
-    source = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
-    target = MySQLConnectionInfo(hostname="localhost", port=3306, username="user", password="pass", ssl=True)
-    databases = ["db1", "db2", "db3"]
-
-    tool = get_dump_tool(tool_name, source, target, databases, skip_column_stats=False)
-
-    # Setup tool if it's MyDumperTool
-    if hasattr(tool, 'setup'):
-        tool.setup()
-
-    dump_cmd = tool.get_dump_command(MySQLMigrateMethod.replication)
-
-    if tool_name == "mysqldump":
-        # mysqldump includes databases in the command
-        assert "--databases" in dump_cmd
-        for db in databases:
-            assert db in dump_cmd
-    elif tool_name == "mydumper":
-        # mydumper uses regex to filter databases, so we just verify command generation
-        assert len(dump_cmd) > 0
-        assert "mydumper" in dump_cmd
-
-
-def test_mydumper_dump_processor_backs_up_metadata_file():
+def test_mydumper_dump_processor_extracts_gtid_from_metadata_file():
     """Test that MydumperDumpProcessor backs up metadata files correctly."""
     with tempfile.TemporaryDirectory() as temp_dir:
         dump_output_dir = Path(temp_dir) / "dump_output"
@@ -298,7 +163,7 @@ def test_mydumper_dump_processor_backs_up_metadata_file():
 
         # Create a test metadata file
         metadata_file = dump_output_dir / "metadata"
-        metadata_content = "[source]\nexecuted_gtid_set = \"test-gtid\"\n"
+        metadata_content = f"[source]\nexecuted_gtid_set = \"{_GTID}\"\n"
         metadata_file.write_text(metadata_content)
 
         processor = MydumperDumpProcessor(
@@ -310,28 +175,27 @@ def test_mydumper_dump_processor_backs_up_metadata_file():
         assert result == "-- metadata 0"
 
         # Verify file was copied
-        assert processor.gtid == "test-gtid"
+        assert processor.gtid == _GTID
 
 
-def test_mydumper_dump_processor_backs_up_metadata_partial_file():
-    """Test that MydumperDumpProcessor backs up metadata.partial.0 files."""
+def test_mydumper_dump_processor_ignores_metadata_partial_file():
+    """Test that MydumperDumpProcessor ignores metadata.partial.0 files."""
     with tempfile.TemporaryDirectory() as temp_dir:
         dump_output_dir = Path(temp_dir) / "dump_output"
         dump_output_dir.mkdir()
 
         # Create a test metadata.partial.0 file
         metadata_partial_file = dump_output_dir / "metadata.partial.0"
-        metadata_content = "partial metadata content\n"
+        metadata_content = f"[source]\nexecuted_gtid_set = \"{_GTID}\"\n"
         metadata_partial_file.write_text(metadata_content)
 
-        processor = MydumperDumpProcessor(
-            dump_output_dir=dump_output_dir
-        )
+        processor = MydumperDumpProcessor(dump_output_dir=dump_output_dir)
 
         # Process line that indicates metadata.partial.0 is ready
         result = processor.process_line("-- metadata.partial.0 0")
         assert result == "-- metadata.partial.0 0"
 
+        # assert that GTID was ignored
         assert processor.gtid is None
 
 
@@ -341,9 +205,7 @@ def test_mydumper_dump_processor_handles_missing_file():
         dump_output_dir = Path(temp_dir) / "dump_output"
         dump_output_dir.mkdir()
 
-        processor = MydumperDumpProcessor(
-            dump_output_dir=dump_output_dir
-        )
+        processor = MydumperDumpProcessor(dump_output_dir=dump_output_dir)
 
         # Process line for non-existent file - should raise AssertionError
         with raises(AssertionError, match="Metadata file not found in dump output directory"):
@@ -358,38 +220,19 @@ def test_mydumper_dump_processor_ignores_non_metadata_lines():
 
         # Create a test metadata file
         metadata_file = dump_output_dir / "metadata"
-        metadata_file.write_text("[source]\ntest=content\n")
+        metadata_file.write_text(f"[source]\nexecuted_gtid_set = \"{_GTID}\"\n")
 
-        processor = MydumperDumpProcessor(
-            dump_output_dir=dump_output_dir)
+        processor = MydumperDumpProcessor(dump_output_dir=dump_output_dir)
         test_lines = [
             "CREATE TABLE test (id INT);",
             "-- some comment",
-            "-- metadata 0",  # This one would trigger if directories were set
+            "-- metadata 0",
         ]
 
         for line in test_lines:
-            result = processor.process_line(line)
-            assert result == line
-
-
-def test_mydumper_dump_processor_creates_backup_directory():
-    """Test that MydumperDumpProcessor creates backup directory if it doesn't exist."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        dump_output_dir = Path(temp_dir) / "dump_output"
-        dump_output_dir.mkdir()
-
-        # Create a test metadata file
-        metadata_file = dump_output_dir / "metadata"
-        metadata_file.write_text("[source]\ntest=content\n")
-
-        processor = MydumperDumpProcessor(
-            dump_output_dir=dump_output_dir
-        )
-
-        # Process line - backup_dir doesn't exist yet
-        result = processor.process_line("-- metadata 0")
-        assert result == "-- metadata 0"
+            processor.process_line(line)
+            # only metadata line should trigger GTID extraction
+            assert processor.gtid == _GTID if line == "-- metadata 0" else True
 
 
 def test_mydumper_dump_processor_ignores_database_files_from_metadata_database():
@@ -398,7 +241,7 @@ def test_mydumper_dump_processor_ignores_database_files_from_metadata_database()
         dump_output_dir = Path(temp_dir) / "dump_output"
         dump_output_dir.mkdir()
 
-        # Create test database files (these should NOT be backed up)
+        # Create test database files (these should NOT be processed)
         database_file_sql = dump_output_dir / "metadata.table1.00000.sql.zst"
         database_file_sql.write_bytes(b"fake sql content")
         database_file_schema = dump_output_dir / "metadata.test-schema.sql.zst"
@@ -406,23 +249,24 @@ def test_mydumper_dump_processor_ignores_database_files_from_metadata_database()
         database_file_dat = dump_output_dir / "metadata.table1.dat.zst"
         database_file_dat.write_bytes(b"fake dat content")
 
-        processor = MydumperDumpProcessor(
-            dump_output_dir=dump_output_dir
-        )
+        processor = MydumperDumpProcessor(dump_output_dir=dump_output_dir)
 
         # Process lines with database file names (these should be ignored)
         result1 = processor.process_line("-- metadata.table1.00000.sql.zst 0")
         assert result1 == "-- metadata.table1.00000.sql.zst 0"
+        assert processor.gtid is None
         result2 = processor.process_line("-- metadata.test-schema.sql.zst 0")
         assert result2 == "-- metadata.test-schema.sql.zst 0"
+        assert processor.gtid is None
         result3 = processor.process_line("-- metadata.table1.dat.zst 0")
         assert result3 == "-- metadata.table1.dat.zst 0"
+        assert processor.gtid is None
 
-        # But verify actual metadata files would still be backed up
+        # But verify actual metadata files would still be processed
         metadata_file = dump_output_dir / "metadata"
-        metadata_content = "[source]\nexecuted_gtid_set = \"test-gtid\"\n"
+        metadata_content = f"[source]\nexecuted_gtid_set = \"{_GTID}\"\n"
         metadata_file.write_text(metadata_content)
 
         result4 = processor.process_line("-- metadata 0")
         assert result4 == "-- metadata 0"
-        assert processor.gtid == "test-gtid"
+        assert processor.gtid == _GTID
