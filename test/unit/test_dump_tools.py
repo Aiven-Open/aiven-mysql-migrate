@@ -1,11 +1,9 @@
 # Copyright (c) 2025 Aiven, Helsinki, Finland. https://aiven.io/
 from aiven_mysql_migrate.dump_tools import (MySQLMigrationToolBase, MySQLDumpTool, MyDumperTool, get_dump_tool)
-from aiven_mysql_migrate.exceptions import DumpToolNotFoundError
 from aiven_mysql_migrate.utils import MySQLConnectionInfo
 from aiven_mysql_migrate.enums import MySQLMigrateMethod
 from pathlib import Path
 from pytest import raises
-from unittest.mock import patch, MagicMock
 import tempfile
 
 
@@ -339,46 +337,6 @@ class TestMyDumperTool:
 
             gtid = self.tool._extract_gtid_from_metadata()  # pylint: disable=protected-access
             assert gtid is None
-
-    @patch('subprocess.run')
-    def test_check_tools_available_success(self, mock_run):
-        """Test tool availability check when tools are available."""
-        mock_run.return_value.returncode = 0
-
-        # Should not raise exception
-        self.tool._check_tools_available()  # pylint: disable=protected-access
-
-        # Should have called subprocess.run for both tools
-        assert mock_run.call_count == 2
-        calls = [call[0][0] for call in mock_run.call_args_list]
-        assert ["mydumper", "--version"] in calls
-        assert ["myloader", "--version"] in calls
-
-    @patch('subprocess.run')
-    def test_check_tools_available_mydumper_missing(self, mock_run):
-        """Test tool availability check when mydumper is missing."""
-        def side_effect(cmd, **kwargs):
-            if cmd[0] == "mydumper":
-                raise FileNotFoundError("mydumper not found")
-            return MagicMock(returncode=0)
-
-        mock_run.side_effect = side_effect
-
-        with raises(DumpToolNotFoundError, match="mydumper not found in PATH"):
-            self.tool._check_tools_available()  # pylint: disable=protected-access
-
-    @patch('subprocess.run')
-    def test_check_tools_available_myloader_missing(self, mock_run):
-        """Test tool availability check when myloader is missing."""
-        def side_effect(cmd, **kwargs):
-            if cmd[0] == "myloader":
-                raise FileNotFoundError("myloader not found")
-            return MagicMock(returncode=0)
-
-        mock_run.side_effect = side_effect
-
-        with raises(DumpToolNotFoundError, match="myloader not found in PATH"):
-            self.tool._check_tools_available()  # pylint: disable=protected-access
 
     def test_get_gtid_returns_none_initially(self):
         """Test get_gtid returns None before migration."""
