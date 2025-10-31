@@ -3,13 +3,11 @@ import textwrap
 from abc import ABC, abstractmethod
 
 from aiven_mysql_migrate.enums import MySQLMigrateTool, MySQLMigrateMethod
-from aiven_mysql_migrate.exceptions import ReplicaSetupException
 from aiven_mysql_migrate.migration_executor import ProcessExecutor
-from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, MydumperDumpProcessor
+from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, MydumperDumpProcessor, DumpProcessor
 from pathlib import Path
 from typing import List, Optional
 
-import configparser
 import logging
 import os
 import shlex
@@ -45,6 +43,10 @@ class MySQLMigrationToolBase(ABC):
     def get_import_command(self, migration_method: Optional[MySQLMigrateMethod] = None) -> List[str]:
         """Build import command."""
 
+    @abstractmethod
+    def _create_dump_processor(self) -> DumpProcessor:
+        """Create the appropriate dump processor for this tool."""
+
     def execute_migration(self, migration_method: MySQLMigrateMethod) -> Optional[str]:
         """
         Execute the complete migration process (dump and import).
@@ -55,9 +57,10 @@ class MySQLMigrationToolBase(ABC):
         Returns:
             GTID string for replication setup, or None for dump method
         """
+        self.setup()
         dump_cmd = self.get_dump_command(migration_method)
         import_cmd = self.get_import_command(migration_method)
-        dump_processor = MySQLDumpProcessor()
+        dump_processor = self._create_dump_processor()
         self._gtid = self.process_executor.execute_piped_commands(
             dump_cmd=dump_cmd,
             import_cmd=import_cmd,
@@ -66,6 +69,9 @@ class MySQLMigrationToolBase(ABC):
             dump_processor=dump_processor
         )
         return self._gtid
+
+    def setup(self) -> None:
+        """Setup temporary resources for migration."""
 
     def cleanup(self) -> None:
         self.process_executor.terminate_processes()
@@ -122,6 +128,10 @@ class MySQLDumpTool(MySQLMigrationToolBase):
 
         return cmd
 
+    def _create_dump_processor(self) -> DumpProcessor:
+        """Create MySQLDumpProcessor for mysqldump tool."""
+        return MySQLDumpProcessor()
+
 
 class MyDumperTool(MySQLMigrationToolBase):
     """MyDumper tool using mydumper/myloader."""
@@ -149,43 +159,12 @@ class MyDumperTool(MySQLMigrationToolBase):
             self.temp_target_cnf_file = self._create_temp_cnf_file(self.target, "target.cnf")
             self.dump_output_dir = self._get_dump_output_dir()
 
-    def execute_migration(self, migration_method: MySQLMigrateMethod) -> Optional[str]:
-        """
-        Execute the migration and extract GTID from metadata file if available.
-
-        Args:
-            migration_method: The migration method (dump or replication)
-
-        Returns:
-            GTID string for replication setup, or None
-        """
-        self.setup()
-        dump_cmd = self.get_dump_command(migration_method)
-        import_cmd = self.get_import_command(migration_method)
-        # LOGGER.debug("dump command: %s", " ".join(shlex.quote(arg) for arg in dump_cmd))
-        # LOGGER.debug("import command: %s", " ".join(shlex.quote(arg) for arg in import_cmd))
-        assert self.dump_output_dir and self.temp_dir is not None
-        dump_processor = MydumperDumpProcessor(
-            dump_output_dir=self.dump_output_dir,
-            backup_dir=Path(self.temp_dir.name)
+    def _create_dump_processor(self) -> DumpProcessor:
+        """Create MydumperDumpProcessor for mydumper tool."""
+        assert self.dump_output_dir and self.temp_dir is not None, (
+            "setup() must be called before creating dump processor"
         )
-        self._gtid = self.process_executor.execute_piped_commands(
-            dump_cmd=dump_cmd,
-            import_cmd=import_cmd,
-            target=self.target,
-            dump_tool=self.dump_tool_name,
-            dump_processor=dump_processor
-        )
-
-        # If we need GTID for replication, extract it from metadata file
-        if migration_method == MySQLMigrateMethod.replication:
-            gtid = self._extract_gtid_from_metadata()
-            if gtid:
-                self._gtid = gtid
-            else:
-                raise ReplicaSetupException("Failed to extract GTID from mydumper metadata for replication setup")
-
-        return self._gtid
+        return MydumperDumpProcessor(dump_output_dir=self.dump_output_dir)
 
     def _create_temp_cnf_file(self, connection_info: MySQLConnectionInfo, filename: str = "connection.cnf") -> Path:
         """Create temporary .cnf file with credentials for secure password handling."""
@@ -282,23 +261,6 @@ class MyDumperTool(MySQLMigrationToolBase):
         ]
 
         return cmd
-
-    def _extract_gtid_from_metadata(self) -> Optional[str]:
-        """Extract GTID from mydumper metadata file."""
-        # Read from backup directory (where metadata files are copied during processing)
-        assert self.temp_dir is not None, "Temporary directory not initialized"
-        metadata_file = Path(self.temp_dir.name) / "metadata"
-        assert metadata_file.exists(), "Backup metadata file must exist at this point"
-        LOGGER.debug("Reading GTID from backed up metadata file: %s", metadata_file)
-
-        config = configparser.ConfigParser()
-        config.read(metadata_file)
-        if gtid := config.get("source", "executed_gtid_set", fallback=None):
-            gtid = gtid.strip('"')
-            LOGGER.info("Extracted GTID from mydumper metadata: %s", gtid)
-            return gtid
-
-        return None
 
     def cleanup(self) -> None:
         """Cleanup temporary resources."""
