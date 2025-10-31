@@ -1,4 +1,5 @@
 # Copyright (c) 2020 Aiven, Helsinki, Finland. https://aiven.io/
+import configparser
 from abc import ABCMeta, abstractmethod
 
 from aiven_mysql_migrate import config
@@ -12,7 +13,6 @@ import contextlib
 import logging
 import pymysql
 import re
-import shutil
 
 LOGGER = logging.getLogger(__name__)
 
@@ -196,32 +196,34 @@ class DumpProcessor(metaclass=ABCMeta):
 
 
 class MydumperDumpProcessor(DumpProcessor):
-    def __init__(self, dump_output_dir: Path, backup_dir: Path):
+    def __init__(self, dump_output_dir: Path):
         super().__init__()
         self.dump_output_dir = dump_output_dir
-        self.backup_dir = backup_dir
 
     def process_line(self, line: str) -> str:
         # metadata file is ready
         if line and line.startswith("-- metadata "):
-            self._backup_metadata_file(line)
+            self.save_gtid_from_metadata()
         return line
 
-    def _backup_metadata_file(self, line: str) -> None:
-        """
-        Backup metadata file when mydumper indicates it's ready.
-
-        Args:
-            line: Line from mydumper output in format "-- <filename> <number>"
-        """
+    def save_gtid_from_metadata(self) -> None:
+        """Save GTID from metadata file when mydumper indicates it's ready."""
         source_file = self.dump_output_dir / "metadata"
         assert source_file.exists(), "Metadata file not found in dump output directory"
+        self.gtid = self._extract_gtid_from_metadata()
 
-        self.backup_dir.mkdir(parents=True, exist_ok=True)
+    def _extract_gtid_from_metadata(self) -> Optional[str]:
+        """Extract GTID from mydumper metadata file."""
+        metadata_file = self.dump_output_dir / "metadata"
+        LOGGER.debug("Reading GTID from backed up metadata file: %s", metadata_file)
+        metadata_parser = configparser.ConfigParser()
+        metadata_parser.read(metadata_file)
+        if gtid := metadata_parser.get("source", "executed_gtid_set", fallback=None):
+            gtid = gtid.strip('"')
+            LOGGER.info("Extracted GTID from mydumper metadata: %s", gtid)
+            return gtid
 
-        dest_file = self.backup_dir / "metadata"
-        shutil.copy2(source_file, dest_file)
-        LOGGER.info("Backed up metadata file")
+        return None
 
 
 class MySQLDumpProcessor(DumpProcessor):

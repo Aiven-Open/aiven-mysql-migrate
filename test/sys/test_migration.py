@@ -62,7 +62,7 @@ def test_migration_replication(
         cur.execute("STOP REPLICA FOR CHANNEL ''")
     with src.cur() as cur:
         cur.execute(f"CREATE DATABASE `{db_name}`")
-        cur.execute(f"USE {db_name}")
+        cur.execute(f"USE `{db_name}`")
         cur.execute("CREATE TABLE test (ID TEXT)")
         cur.execute("INSERT INTO test (ID) VALUES (%s)", ["test_data"])
         cur.execute("COMMIT")
@@ -116,7 +116,7 @@ def test_migration_replication(
 def test_migration_fallback(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, dump_tool: str, db_name: str) -> None:
     with src.cur() as cur:
         cur.execute(f"CREATE DATABASE `{db_name}`")
-        cur.execute(f"USE {db_name}")
+        cur.execute(f"USE `{db_name}`")
         cur.execute("CREATE TABLE test (ID TEXT)")
         cur.execute("INSERT INTO test (ID) VALUES (%s)", ["test_data"])
         cur.execute("CREATE PROCEDURE test_proc (OUT body TEXT) BEGIN SELECT 'test_body'; END")
@@ -163,7 +163,7 @@ def test_force_migration_method(  # pylint: disable=too-many-positional-argument
 ):
     with src.cur() as cur:
         cur.execute(f"CREATE DATABASE `{db_name}`")
-        cur.execute(f"USE {db_name}")
+        cur.execute(f"USE `{db_name}`")
         cur.execute("CREATE TABLE test (ID TEXT)")
         cur.execute("INSERT INTO test (ID) VALUES (%s)", ["test_data"])
         cur.execute("COMMIT")
@@ -200,7 +200,7 @@ def test_database_size_check(src, dst, dump_tool, db_name):
 
     with src.cur() as cur:
         cur.execute(f"CREATE DATABASE `{db_name}`")
-        cur.execute(f"USE {db_name}")
+        cur.execute(f"USE `{db_name}`")
         cur.execute("CREATE TABLE test (ID TEXT)")
         cur.execute("INSERT INTO test (ID) VALUES (%s)", ["test_data"])
 
@@ -238,7 +238,7 @@ def test_database_ssl_disabled(src, dst, dump_tool, db_name):
 
     with src.cur() as cur:
         cur.execute(f"CREATE DATABASE `{db_name}`")
-        cur.execute(f"USE {db_name}")
+        cur.execute(f"USE `{db_name}`")
         cur.execute("CREATE TABLE test (ID TEXT)")
 
     # Default check without SSL should pass

@@ -1,6 +1,6 @@
 # Copyright (c) 2025 Aiven, Helsinki, Finland. https://aiven.io/
 from aiven_mysql_migrate.dump_tools import (MySQLMigrationToolBase, MySQLDumpTool, MyDumperTool, get_dump_tool)
-from aiven_mysql_migrate.utils import MySQLConnectionInfo
+from aiven_mysql_migrate.utils import MySQLConnectionInfo, MydumperDumpProcessor
 from aiven_mysql_migrate.enums import MySQLMigrateMethod
 from pathlib import Path
 from pytest import raises
@@ -275,67 +275,42 @@ class TestMyDumperTool:
         assert not temp_dir_path.exists()
         assert not temp_cnf_path.exists()
 
-    def test_extract_gtid_from_metadata_success(self):
-        """Test GTID extraction from metadata file in backup directory."""
-        # Create a temporary directory and metadata file
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Create metadata file in backup directory (where it gets copied during processing)
-            metadata_file = Path(temp_dir) / "metadata"
-            with metadata_file.open('w') as f:
-                f.write("[source]\n")
-                f.write("executed_gtid_set = \"12345-67890-abcdef:1-100\"\n")
-                f.write("OTHER_LINE = value\n")
-
-            # Mock the temp_dir (backup directory)
-            class MockTempDir:
-                def __init__(self, name):
-                    self.name = name
-
-            self.tool.temp_dir = MockTempDir(temp_dir)
-
-            gtid = self.tool._extract_gtid_from_metadata()  # pylint: disable=protected-access
-            assert gtid == "12345-67890-abcdef:1-100"
-
     def test_extract_gtid_from_metadata_uses_backup(self):
         """Test GTID extraction reads from backup directory."""
         # Create a temporary directory and metadata file
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create backup directory with backed up metadata
-            backup_dir = Path(temp_dir)
-            backup_metadata_file = backup_dir / "metadata"
-            with backup_metadata_file.open('w') as f:
+            dump_output_dir = Path(temp_dir)
+            metadata_file = dump_output_dir / "metadata"
+            with metadata_file.open('w') as f:
                 f.write("[source]\n")
                 f.write("executed_gtid_set = \"backup-gtid:1-200\"\n")
 
-            # Mock temp_dir (backup directory) - create a mock TemporaryDirectory-like object
-            class MockTempDir:
-                def __init__(self, name):
-                    self.name = name
-
-            self.tool.temp_dir = MockTempDir(temp_dir)
-
-            # Should read from backup location
-            gtid = self.tool._extract_gtid_from_metadata()  # pylint: disable=protected-access
-            assert gtid == "backup-gtid:1-200"
+            processor = MydumperDumpProcessor(
+                dump_output_dir=dump_output_dir
+            )
+            processor.save_gtid_from_metadata()
+            assert processor.gtid == "backup-gtid:1-200"
 
     def test_extract_gtid_from_metadata_no_gtid_line(self):
         """Test GTID extraction when metadata file has no GTID line."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create metadata file in backup directory
-            metadata_file = Path(temp_dir) / "metadata"
+            backup_dir = Path(temp_dir)
+            metadata_file = backup_dir / "metadata"
             with metadata_file.open('w') as f:
                 f.write("[source]\n")
                 f.write("OTHER_LINE=value\n")
                 f.write("ANOTHER_LINE=another_value\n")
 
-            # Mock the temp_dir (backup directory)
-            class MockTempDir:
-                def __init__(self, name):
-                    self.name = name
+            # Create MydumperDumpProcessor with backup directory
+            dump_output_dir = Path(temp_dir) / "dump_output"
+            dump_output_dir.mkdir()
+            processor = MydumperDumpProcessor(
+                dump_output_dir=dump_output_dir
+            )
 
-            self.tool.temp_dir = MockTempDir(temp_dir)
-
-            gtid = self.tool._extract_gtid_from_metadata()  # pylint: disable=protected-access
+            gtid = processor._extract_gtid_from_metadata()  # pylint: disable=protected-access
             assert gtid is None
 
     def test_get_gtid_returns_none_initially(self):
