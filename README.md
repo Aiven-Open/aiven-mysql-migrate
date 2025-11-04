@@ -103,6 +103,18 @@ SOURCE_SERVICE_URI="mysql://<src_admin>:<pwd>@<src_host>:<port>/?ssl-mode=REQUIR
 mysql_migrate --filter-dbs "<temp_db1>,<temp_db2>" --seconds-behind-master 0 --stop-replication
 ```
 
+## Trust Requirements for Source Database
+
+The `aiven-mysql-migrate` tool is designed to facilitate MySQL database migrations by using a dump file 
+(generated from the Source Database) and piping its contents directly into the target mysql database.
+
+Users must be aware that `aiven-mysql-migrate` implicitly trusts the Source Database from which the migration dump originates.
+
+- The tooling does not perform parsing or lexical analysis of the SQL commands
+within the dump file to filter out potentially malicious or disallowed code.
+
+- Every command generated from the Source Database will be executed by the target mysql database.
+
 ## Trademarks
 
 MySQL is a registered trademark of Oracle and/or its affiliates. Other names may be trademarks of their respective owners.
