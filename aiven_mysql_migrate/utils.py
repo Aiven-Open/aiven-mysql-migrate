@@ -1,13 +1,20 @@
 # Copyright (c) 2020 Aiven, Helsinki, Finland. https://aiven.io/
+import configparser
+from abc import ABCMeta, abstractmethod
+
 from aiven_mysql_migrate import config
 from aiven_mysql_migrate.exceptions import WrongMigrationConfigurationException
 from dataclasses import dataclass
+from pathlib import Path
 from typing import AnyStr, Dict, List, Optional
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import contextlib
+import logging
 import pymysql
 import re
+
+LOGGER = logging.getLogger(__name__)
 
 DEFAULT_MYSQL_PORT = 3306
 ALLOWED_OPTIONS = {"ssl-mode"}
@@ -175,10 +182,51 @@ class PrivilegeCheckUser:
         return params
 
 
-class MySQLDumpProcessor:
+class DumpProcessor(metaclass=ABCMeta):
     def __init__(self):
-        self.gtid = None
         self.gtid_block = ""
+        self.gtid = None
+
+    @abstractmethod
+    def process_line(self, line):
+        pass
+
+    def get_gtid(self):
+        return self.gtid
+
+
+class MydumperDumpProcessor(DumpProcessor):
+    def __init__(self, dump_output_dir: Path):
+        super().__init__()
+        self.dump_output_dir = dump_output_dir
+
+    def process_line(self, line: str) -> str:
+        # metadata file is ready
+        if line and line.startswith("-- metadata "):
+            self.save_gtid_from_metadata()
+        return line
+
+    def save_gtid_from_metadata(self) -> None:
+        """Save GTID from metadata file when mydumper indicates it's ready."""
+        source_file = self.dump_output_dir / "metadata"
+        assert source_file.exists(), "Metadata file not found in dump output directory"
+        self.gtid = self._extract_gtid_from_metadata()
+
+    def _extract_gtid_from_metadata(self) -> Optional[str]:
+        """Extract GTID from mydumper metadata file."""
+        metadata_file = self.dump_output_dir / "metadata"
+        LOGGER.debug("Reading GTID from metadata file: %s", metadata_file)
+        metadata_parser = configparser.ConfigParser()
+        metadata_parser.read(metadata_file)
+        gtid_raw = metadata_parser.get("source", "executed_gtid_set", fallback=None)
+        if gtid_raw and (gtid := gtid_raw.strip('"')):
+            LOGGER.info("Extracted GTID from mydumper metadata: %s", gtid)
+            return gtid
+
+        return None
+
+
+class MySQLDumpProcessor(DumpProcessor):
 
     @staticmethod
     def _remove_log_bin_data(line: str) -> str:
@@ -235,9 +283,6 @@ class MySQLDumpProcessor:
         line = MySQLDumpProcessor._remove_definers(line)
         line = MySQLDumpProcessor._remove_deprecated_sql_modes(line)
         return line
-
-    def get_gtid(self):
-        return self.gtid
 
 
 def select_global_var(cur, var_name: str):

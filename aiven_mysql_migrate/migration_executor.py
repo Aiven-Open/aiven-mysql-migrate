@@ -1,9 +1,10 @@
 # Copyright (c) 2025 Aiven, Helsinki, Finland. https://aiven.io/
+from aiven_mysql_migrate.enums import MySQLMigrateTool
 from aiven_mysql_migrate.exceptions import MySQLDumpException, MySQLImportException
-from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, select_global_var
+from aiven_mysql_migrate.utils import MySQLConnectionInfo, DumpProcessor, select_global_var
 from concurrent import futures
 from subprocess import Popen
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional
 
 import concurrent
 import logging
@@ -26,8 +27,11 @@ class ProcessExecutor:
         dump_cmd: List[str],
         import_cmd: List[str],
         target: MySQLConnectionInfo,
-        line_processor: Optional[Callable[[str], str]] = None
-    ) -> Tuple[int, int, Optional[str]]:
+        *,
+        line_processor: Optional[Callable[[str], str]] = None,
+        dump_tool: MySQLMigrateTool = MySQLMigrateTool.mysqldump,
+        dump_processor: Optional[DumpProcessor] = None
+    ) -> Optional[str]:
         """
         Execute dump and import commands with piping.
 
@@ -36,13 +40,13 @@ class ProcessExecutor:
             import_cmd: The import command and arguments
             target: Target database connection info
             line_processor: Optional function to process each line from dump output
+            dump_tool: The dump tool being used ("mysqldump" or "mydumper")
+            dump_processor: Optional dump processor for processing dump output lines
 
         Returns:
             Tuple of (dump_exit_code, import_exit_code, extracted_gtid)
         """
         LOGGER.info("Starting import from source to target database")
-
-        dump_processor = MySQLDumpProcessor() if not line_processor else None
         self.dump_proc = Popen(  # pylint: disable=consider-using-with
             dump_cmd,
             stdout=subprocess.PIPE,
@@ -57,8 +61,8 @@ class ProcessExecutor:
         )
 
         # Disallow creating child processes in migration target when this runs as non-root user
-        if hasattr(resource, "prlimit"):
-            resource.prlimit(self.import_proc.pid, resource.RLIMIT_NPROC, (0, 0))
+        if hasattr(resource, "prlimit") and dump_tool == MySQLMigrateTool.mysqldump:
+            resource.prlimit(self.import_proc.pid, resource.RLIMIT_NPROC, (0, 0))  # pylint: disable=no-member
 
         # make mypy happy
         assert self.dump_proc.stdout
@@ -73,9 +77,9 @@ class ProcessExecutor:
         def _reader_stdout():
             for line in self.dump_proc.stdout:
                 if line_processor:
-                    processed_line = line_processor(line.rstrip())
+                    processed_line = line_processor(line)
                 else:
-                    processed_line = dump_processor.process_line(line.rstrip())
+                    processed_line = dump_processor.process_line(line)
 
                 if not processed_line:
                     continue
@@ -108,7 +112,7 @@ class ProcessExecutor:
             raise MySQLImportException(f"Error while importing data into the target database, exit code: {import_code}")
 
         gtid = dump_processor.get_gtid() if dump_processor else None
-        return export_code, import_code, gtid
+        return gtid
 
     def terminate_processes(self) -> None:
         for proc in (self.import_proc, self.dump_proc):

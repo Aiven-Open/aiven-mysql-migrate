@@ -1,7 +1,14 @@
+# Copyright (c) 2025 Aiven, Helsinki, Finland. https://aiven.io/
 from aiven_mysql_migrate.exceptions import WrongMigrationConfigurationException
-from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor
+from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, MydumperDumpProcessor
+from pathlib import Path
 from pytest import mark, raises
 from typing import Optional, Type
+
+import tempfile
+
+
+_GTID = "866a7051-3311-11eb-8485-0aa2f299396b:1-1213"
 
 
 @mark.parametrize(
@@ -146,3 +153,142 @@ def test_mysql_connection_info_from_uri_unquote_username_and_password() -> None:
     assert conn_info.username == "test@example.com"
     assert conn_info.password == "@& {"
     assert conn_info.to_uri() == uri
+
+
+def test_mydumper_dump_processor_extracts_gtid_from_metadata_file():
+    """Test that MydumperDumpProcessor backs up metadata files correctly."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dump_output_dir = Path(temp_dir) / "dump_output"
+        dump_output_dir.mkdir()
+
+        # Create a test metadata file
+        metadata_file = dump_output_dir / "metadata"
+        metadata_content = f"[source]\nexecuted_gtid_set = \"{_GTID}\"\n"
+        metadata_file.write_text(metadata_content)
+
+        processor = MydumperDumpProcessor(
+            dump_output_dir=dump_output_dir,
+        )
+
+        # Process line that indicates metadata is ready
+        result = processor.process_line("-- metadata 0")
+        assert result == "-- metadata 0"
+
+        # Verify file was copied
+        assert processor.gtid == _GTID
+
+
+def test_mydumper_dump_processor_handles_empty_gtid():
+    """Test that MydumperDumpProcessor returns None for empty GTID string."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dump_output_dir = Path(temp_dir) / "dump_output"
+        dump_output_dir.mkdir()
+
+        # Create a test metadata file with empty GTID
+        metadata_file = dump_output_dir / "metadata"
+        metadata_content = "[source]\nexecuted_gtid_set = \"\"\n"
+        metadata_file.write_text(metadata_content)
+
+        processor = MydumperDumpProcessor(
+            dump_output_dir=dump_output_dir,
+        )
+
+        result = processor.process_line("-- metadata 0")
+        assert result == "-- metadata 0"
+
+        # Verify empty GTID returns None
+        assert processor.gtid is None
+
+
+def test_mydumper_dump_processor_ignores_metadata_partial_file():
+    """Test that MydumperDumpProcessor ignores metadata.partial.0 files."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dump_output_dir = Path(temp_dir) / "dump_output"
+        dump_output_dir.mkdir()
+
+        # Create a test metadata.partial.0 file
+        metadata_partial_file = dump_output_dir / "metadata.partial.0"
+        metadata_content = f"[source]\nexecuted_gtid_set = \"{_GTID}\"\n"
+        metadata_partial_file.write_text(metadata_content)
+
+        processor = MydumperDumpProcessor(dump_output_dir=dump_output_dir)
+
+        # Process line that indicates metadata.partial.0 is ready
+        result = processor.process_line("-- metadata.partial.0 0")
+        assert result == "-- metadata.partial.0 0"
+
+        # assert that GTID was ignored
+        assert processor.gtid is None
+
+
+def test_mydumper_dump_processor_handles_missing_file():
+    """Test that MydumperDumpProcessor raises AssertionError for missing metadata files."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dump_output_dir = Path(temp_dir) / "dump_output"
+        dump_output_dir.mkdir()
+
+        processor = MydumperDumpProcessor(dump_output_dir=dump_output_dir)
+
+        # Process line for non-existent file - should raise AssertionError
+        with raises(AssertionError, match="Metadata file not found in dump output directory"):
+            processor.process_line("-- metadata 0")
+
+
+def test_mydumper_dump_processor_ignores_non_metadata_lines():
+    """Test that MydumperDumpProcessor ignores non-metadata lines."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dump_output_dir = Path(temp_dir) / "dump_output"
+        dump_output_dir.mkdir()
+
+        # Create a test metadata file
+        metadata_file = dump_output_dir / "metadata"
+        metadata_file.write_text(f"[source]\nexecuted_gtid_set = \"{_GTID}\"\n")
+
+        processor = MydumperDumpProcessor(dump_output_dir=dump_output_dir)
+        test_lines = [
+            "CREATE TABLE test (id INT);",
+            "-- some comment",
+            "-- metadata 0",
+        ]
+
+        for line in test_lines:
+            processor.process_line(line)
+            # only metadata line should trigger GTID extraction
+            assert processor.gtid == _GTID if line == "-- metadata 0" else True
+
+
+def test_mydumper_dump_processor_ignores_database_files_from_metadata_database():
+    """Test that MydumperDumpProcessor ignores database files from database named 'metadata'."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dump_output_dir = Path(temp_dir) / "dump_output"
+        dump_output_dir.mkdir()
+
+        # Create test database files (these should NOT be processed)
+        database_file_sql = dump_output_dir / "metadata.table1.00000.sql.zst"
+        database_file_sql.write_bytes(b"fake sql content")
+        database_file_schema = dump_output_dir / "metadata.test-schema.sql.zst"
+        database_file_schema.write_bytes(b"fake schema content")
+        database_file_dat = dump_output_dir / "metadata.table1.dat.zst"
+        database_file_dat.write_bytes(b"fake dat content")
+
+        processor = MydumperDumpProcessor(dump_output_dir=dump_output_dir)
+
+        # Process lines with database file names (these should be ignored)
+        result1 = processor.process_line("-- metadata.table1.00000.sql.zst 0")
+        assert result1 == "-- metadata.table1.00000.sql.zst 0"
+        assert processor.gtid is None
+        result2 = processor.process_line("-- metadata.test-schema.sql.zst 0")
+        assert result2 == "-- metadata.test-schema.sql.zst 0"
+        assert processor.gtid is None
+        result3 = processor.process_line("-- metadata.table1.dat.zst 0")
+        assert result3 == "-- metadata.table1.dat.zst 0"
+        assert processor.gtid is None
+
+        # But verify actual metadata files would still be processed
+        metadata_file = dump_output_dir / "metadata"
+        metadata_content = f"[source]\nexecuted_gtid_set = \"{_GTID}\"\n"
+        metadata_file.write_text(metadata_content)
+
+        result4 = processor.process_line("-- metadata 0")
+        assert result4 == "-- metadata 0"
+        assert processor.gtid == _GTID
