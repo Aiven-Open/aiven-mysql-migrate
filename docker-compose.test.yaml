@@ -6,6 +6,7 @@ services:
     build: .
     depends_on:
       - mysql57-src-1
+      - mysql57-src-invalid-gtid
       - mysql80-src-2
       - mysql80-src-3
       - mysql80-src-4
@@ -29,6 +30,21 @@ services:
       - --log-slave-updates=ON
       - --log-bin=binlog
       - --binlog-format=ROW
+
+  mysql57-src-invalid-gtid:
+    image: mysql:5.7
+    platform: linux/amd64
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: test
+    command:
+      - --server-id=1
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --master-info-repository=TABLE
+      - --relay-log-info-repository=TABLE
+      - --binlog-checksum=NONE
+      - --log-slave-updates=ON
 
   mysql80-src-2:
     image: mysql:8.0
