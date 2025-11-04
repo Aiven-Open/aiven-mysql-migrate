@@ -178,6 +178,28 @@ def test_mydumper_dump_processor_extracts_gtid_from_metadata_file():
         assert processor.gtid == _GTID
 
 
+def test_mydumper_dump_processor_handles_empty_gtid():
+    """Test that MydumperDumpProcessor returns None for empty GTID string."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dump_output_dir = Path(temp_dir) / "dump_output"
+        dump_output_dir.mkdir()
+
+        # Create a test metadata file with empty GTID
+        metadata_file = dump_output_dir / "metadata"
+        metadata_content = "[source]\nexecuted_gtid_set = \"\"\n"
+        metadata_file.write_text(metadata_content)
+
+        processor = MydumperDumpProcessor(
+            dump_output_dir=dump_output_dir,
+        )
+
+        result = processor.process_line("-- metadata 0")
+        assert result == "-- metadata 0"
+
+        # Verify empty GTID returns None
+        assert processor.gtid is None
+
+
 def test_mydumper_dump_processor_ignores_metadata_partial_file():
     """Test that MydumperDumpProcessor ignores metadata.partial.0 files."""
     with tempfile.TemporaryDirectory() as temp_dir:

@@ -218,8 +218,8 @@ class MydumperDumpProcessor(DumpProcessor):
         LOGGER.debug("Reading GTID from metadata file: %s", metadata_file)
         metadata_parser = configparser.ConfigParser()
         metadata_parser.read(metadata_file)
-        if gtid := metadata_parser.get("source", "executed_gtid_set", fallback=None):
-            gtid = gtid.strip('"')
+        gtid_raw = metadata_parser.get("source", "executed_gtid_set", fallback=None)
+        if gtid_raw and (gtid := gtid_raw.strip('"')):
             LOGGER.info("Extracted GTID from mydumper metadata: %s", gtid)
             return gtid
 
