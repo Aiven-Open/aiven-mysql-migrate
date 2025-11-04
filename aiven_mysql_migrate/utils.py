@@ -25,6 +25,9 @@ LOG_BIN_RE = re.compile(r"^SET +@@SESSION.SQL_LOG_BIN *= *.*?;$")
 
 GLOBAL_GRANTS_RE = re.compile("^GRANT +(.*) +ON +\\*\\.\\* +TO.*$")
 
+DEPRECATED_SQL_MODES = {"NO_AUTO_CREATE_USER", "ERROR_FOR_DIVISION_BY_ZERONO_ENGINE_SUBSTITUTION"}
+SQL_MODE_RE = re.compile(r"(/\*!50003 SET sql_mode\s*=\s*')(.*)('\s*\*/\s;)")
+
 
 @dataclass
 class MySQLConnectionInfo:
@@ -196,6 +199,16 @@ class MySQLDumpProcessor:
 
         return ROUTINE_DEFINER_RE.sub("CREATE \\2", line)
 
+    @staticmethod
+    def _remove_deprecated_sql_modes(line: str) -> str:
+        """This sql command were deprecated in MySQL 8.0, this method removed deprecated commands"""
+        if not SQL_MODE_RE.match(line):
+            return line
+
+        sql_modes = set(map(lambda mode: mode.strip(), SQL_MODE_RE.sub(r"\2", line).split(",")))
+        filtered_sql_modes = ",".join(sql_modes - DEPRECATED_SQL_MODES)
+        return SQL_MODE_RE.sub(fr"\1{filtered_sql_modes}\3", line)
+
     def process_line(self, line: str) -> str:
         if line and not self.gtid:
             if self.gtid_block:
@@ -218,10 +231,9 @@ class MySQLDumpProcessor:
                         # Multi-line GTID comment
                         self.gtid_block = start_match.group(1)
                     return ""
-
         line = MySQLDumpProcessor._remove_log_bin_data(line)
         line = MySQLDumpProcessor._remove_definers(line)
-
+        line = MySQLDumpProcessor._remove_deprecated_sql_modes(line)
         return line
 
     def get_gtid(self):

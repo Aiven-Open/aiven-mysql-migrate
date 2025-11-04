@@ -101,6 +101,7 @@ def test_migration_replication(src: MySQLConnectionInfo, dst: MySQLConnectionInf
 
 @mark.parametrize("src,dst", [
     (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3")),
+    (my_wait("mysql57-src-invalid-gtid"), my_wait("mysql80-dst-1")),
 ])
 def test_migration_fallback(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, db_name: str) -> None:
     with src.cur() as cur:

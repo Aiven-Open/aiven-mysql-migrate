@@ -133,6 +133,17 @@ class MySQLMigration:
                 gtid_mode = select_global_var(cur, "gtid_mode")
                 if gtid_mode.upper() != "ON":
                     raise GTIDModeDisabledException(f"GTID mode should be enabled on the {conn_info.name}")
+                cur.execute("SHOW MASTER STATUS")
+                master_status = cur.fetchone()
+                if master_status is None:
+                    raise GTIDModeDisabledException(
+                        f"GTID mode should be enabled on the {conn_info.name}: SHOW MASTER STATUS is empty"
+                    )
+                executed_gtid_set = master_status.get("Executed_Gtid_Set", None)
+                if not executed_gtid_set:
+                    raise GTIDModeDisabledException(
+                        f"GTID mode should be enabled on the {conn_info.name}: Executed_Gtid_Set is empty"
+                    )
 
     def _check_user_can_replicate(self):
         LOGGER.info("Checking if user has replication grants on the source")
