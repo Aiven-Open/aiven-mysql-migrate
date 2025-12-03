@@ -1,4 +1,6 @@
 # Copyright (c) 2020 Aiven, Helsinki, Finland. https://aiven.io/
+import datetime
+
 from aiven_mysql_migrate import config
 from aiven_mysql_migrate.dump_tools import MySQLMigrationToolBase, get_dump_tool
 from aiven_mysql_migrate.enums import MySQLMigrateTool, MySQLMigrateMethod
@@ -8,6 +10,7 @@ from aiven_mysql_migrate.exceptions import (
     SSLNotSupportedException, TooManyDatabasesException, UnsupportedBinLogFormatException, UnsupportedMySQLEngineException,
     UnsupportedMySQLVersionException, WrongMigrationConfigurationException
 )
+from aiven_mysql_migrate.migration_error import MysqlMigrationError
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, PrivilegeCheckUser, select_global_var
 from looseversion import LooseVersion
 from pathlib import Path
@@ -41,6 +44,7 @@ class MySQLMigration:
         privilege_check_user: Optional[str] = None,
         output_meta_file: Optional[Path] = None,
         dump_tool: MySQLMigrateTool = MySQLMigrateTool.mysqldump,
+        output_error_file: Optional[Path] = None,
     ):
         self.dump_tool_name = dump_tool
         self.dump_tool: Optional[MySQLMigrationToolBase] = None
@@ -61,6 +65,7 @@ class MySQLMigration:
         if privilege_check_user:
             self.privilege_check_user = PrivilegeCheckUser.parse(privilege_check_user)
         self.output_meta_file = output_meta_file
+        self.output_error_file = output_error_file
 
     def setup_signal_handlers(self):
         signal.signal(signal.SIGINT, self._stop_migration)
@@ -380,6 +385,24 @@ class MySQLMigration:
 
     def start(self, *,
               migration_method: MySQLMigrateMethod, seconds_behind_master: int, stop_replication: bool = False) -> None:
+        try:
+            self.start_migration(migration_method=migration_method,
+                                 seconds_behind_master=seconds_behind_master,
+                                 stop_replication=stop_replication)
+        except Exception as e:
+            if self.output_error_file is not None:
+                with open(self.output_error_file, "w", encoding='utf-8') as f:
+                    error = MysqlMigrationError(error_type=e.__class__.__module__ + "." + e.__class__.__name__,
+                                                error_msg=str(e),
+                                                error_date=datetime.datetime.now(datetime.timezone.utc))
+                    f.write(json.dumps(error.__dict__, default=str))
+            raise
+
+    def start_migration(self,
+                        *,
+                        migration_method: MySQLMigrateMethod,
+                        seconds_behind_master: int,
+                        stop_replication: bool = False) -> None:
         LOGGER.info("Start migration of the following databases:")
         for db in self.databases:
             LOGGER.info("\t%s", db)
