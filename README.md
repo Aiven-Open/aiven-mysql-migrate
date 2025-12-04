@@ -70,6 +70,8 @@ optional arguments:
                         Max total size of databases to be migrated, ignored by default
   --output-meta-file OUTPUT_META_FILE
                         Output file which includes metadata such as dump GTIDs (for replication method only) in JSON format.
+  --output_error_file OUTPUT_ERROR_FILE
+                        Save migration error to file in JSON format.
   --allow-source-without-dbs
                         Allow migrating from a source that has no migratable databases
 ```

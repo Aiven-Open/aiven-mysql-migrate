@@ -63,6 +63,13 @@ def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Op
         help="Output file which includes metadata such as dump GTIDs (for replication method only) in JSON format.",
     )
     parser.add_argument(
+        "--output-error-file",
+        type=Path,
+        required=False,
+        default=None,
+        help="Save migration error to file in JSON format.",
+    )
+    parser.add_argument(
         "--allow-source-without-dbs",
         action="store_true",
         help="Allow migrating from a source that has no migratable databases"
@@ -89,6 +96,7 @@ def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Op
         privilege_check_user=parsed_args.privilege_check_user,
         output_meta_file=parsed_args.output_meta_file,
         dump_tool=parsed_args.dump_tool,
+        output_error_file=parsed_args.output_error_file,
     )
     migration.setup_signal_handlers()
 

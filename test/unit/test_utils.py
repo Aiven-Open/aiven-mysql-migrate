@@ -1,5 +1,14 @@
 # Copyright (c) 2025 Aiven, Helsinki, Finland. https://aiven.io/
+import datetime
+import json
+
+from pymysql import OperationalError
+from aiven_mysql_migrate.enums import MySQLMigrateMethod
+
+from aiven_mysql_migrate.migration import MySQLMigration
+
 from aiven_mysql_migrate.exceptions import WrongMigrationConfigurationException
+from aiven_mysql_migrate.migration_error import MysqlMigrationError
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, MydumperDumpProcessor
 from pathlib import Path
 from pytest import mark, raises
@@ -292,3 +301,30 @@ def test_mydumper_dump_processor_ignores_database_files_from_metadata_database()
         result4 = processor.process_line("-- metadata 0")
         assert result4 == "-- metadata 0"
         assert processor.gtid == _GTID
+
+
+def test_failed_migration_generates_file():
+    migration_error_path = Path("/", "tmp", "error.json")
+    server_uri = "mysql://user:password@invalid:3306"
+    migration = MySQLMigration(
+        source_uri=server_uri,
+        target_uri=server_uri,
+        target_master_uri=server_uri,
+        privilege_check_user="root@%",
+        output_error_file=migration_error_path
+    )
+    with raises(OperationalError):
+        migration.start(migration_method=MySQLMigrateMethod.dump, seconds_behind_master=0)
+
+    with open(migration_error_path, encoding='utf-8') as file:
+        error: MysqlMigrationError = json.loads(file.read(), object_hook=lambda d: MysqlMigrationError(**d))
+        assert error.error_type == "pymysql.err.OperationalError"
+        assert error.error_msg == ("(2003, "
+                                   "\"Can't connect to MySQL server on 'invalid' "
+                                   "([Errno -2] Name or service not known)\")")
+        assert error.error_date < datetime.datetime.now(datetime.timezone.utc)
+
+
+def test_migration_error_fails_on_invalid_date():
+    with raises(ValueError):
+        MysqlMigrationError(error_type="pymysql.err.OperationalError", error_msg="message", error_date="invalid")
