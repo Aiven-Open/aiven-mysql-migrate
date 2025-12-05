@@ -77,3 +77,7 @@ class MyLoaderException(Exception):
 
 class DumpToolNotFoundError(Exception):
     pass
+
+
+class IncompatibleGtidsException(MigrationPreCheckException):
+    pass

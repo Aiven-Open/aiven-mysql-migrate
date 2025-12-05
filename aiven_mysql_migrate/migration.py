@@ -5,10 +5,11 @@ from aiven_mysql_migrate import config
 from aiven_mysql_migrate.dump_tools import MySQLMigrationToolBase, get_dump_tool
 from aiven_mysql_migrate.enums import MySQLMigrateTool, MySQLMigrateMethod
 from aiven_mysql_migrate.exceptions import (
-    DatabaseTooLargeException, EndpointConnectionException, GTIDModeDisabledException, MissingReplicationGrants,
-    NothingToMigrateException, ReplicaSetupException, ReplicationNotAvailableException, ServerIdsOverlappingException,
-    SSLNotSupportedException, TooManyDatabasesException, UnsupportedBinLogFormatException, UnsupportedMySQLEngineException,
-    UnsupportedMySQLVersionException, WrongMigrationConfigurationException
+    DatabaseTooLargeException, EndpointConnectionException, GTIDModeDisabledException, IncompatibleGtidsException,
+    MissingReplicationGrants, NothingToMigrateException, ReplicaSetupException, ReplicationNotAvailableException,
+    ServerIdsOverlappingException, SSLNotSupportedException, TooManyDatabasesException,
+    UnsupportedBinLogFormatException, UnsupportedMySQLEngineException, UnsupportedMySQLVersionException,
+    WrongMigrationConfigurationException
 )
 from aiven_mysql_migrate.migration_error import MysqlMigrationError
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, PrivilegeCheckUser, select_global_var
@@ -203,15 +204,34 @@ class MySQLMigration:
             if row_format.upper() != "ROW":
                 raise UnsupportedBinLogFormatException(f"Unsupported binary log format: {row_format}, only ROW is supported")
 
+    def _check_source_target_uuids_aligned(self):
+        with self.source.cur() as cur:
+            source_server_uuid = select_global_var(cur, "server_uuid")
+        with self.target.cur() as cur:
+            cur.execute(
+                "SELECT COUNT(*) > 0 AS included FROM mysql.gtid_executed WHERE source_uuid = %s",
+                (source_server_uuid,)
+            )
+            if cur.fetchone()["included"] != 1:
+                raise IncompatibleGtidsException()
+
     def run_checks(
         self,
         force_method: Optional[MySQLMigrateMethod] = None,
-        dbs_max_total_size: Optional[float] = None
+        dbs_max_total_size: Optional[float] = None,
+        reestablish_replication: bool = False,
     ) -> MySQLMigrateMethod:
-        """Raises an exception if one of the the pre-checks fails, otherwise a method to be used for migration.
+        """Raises an exception if one of the pre-checks fails, otherwise a method to be used for migration.
         If force_method is set, re-raises validation exceptions in case the chosen method is not possible."""
         migration_method = MySQLMigrateMethod.replication if force_method is None else force_method
         fallback_to_dump_method = force_method is None
+
+        if reestablish_replication:
+            if migration_method != MySQLMigrateMethod.replication:
+                raise WrongMigrationConfigurationException(
+                    "Reestablishing migration is only available for the 'replication' method")
+            self._check_source_target_uuids_aligned()
+            return migration_method
 
         if force_method is not None:
             LOGGER.info("Forcing migration method %r", migration_method)
@@ -383,12 +403,20 @@ class MySQLMigration:
 
             time.sleep(check_interval)
 
-    def start(self, *,
-              migration_method: MySQLMigrateMethod, seconds_behind_master: int, stop_replication: bool = False) -> None:
+    def start(
+        self, *,
+        migration_method: MySQLMigrateMethod,
+        seconds_behind_master: int,
+        stop_replication: bool = False,
+        reestablish_replication: bool = False,
+    ) -> None:
         try:
-            self.start_migration(migration_method=migration_method,
-                                 seconds_behind_master=seconds_behind_master,
-                                 stop_replication=stop_replication)
+            self.start_migration(
+                migration_method=migration_method,
+                seconds_behind_master=seconds_behind_master,
+                stop_replication=stop_replication,
+                reestablish_replication=reestablish_replication
+            )
         except Exception as e:
             if self.output_error_file is not None:
                 with open(self.output_error_file, "w", encoding='utf-8') as f:
@@ -398,11 +426,14 @@ class MySQLMigration:
                     f.write(json.dumps(error.__dict__, default=str))
             raise
 
-    def start_migration(self,
-                        *,
-                        migration_method: MySQLMigrateMethod,
-                        seconds_behind_master: int,
-                        stop_replication: bool = False) -> None:
+    def start_migration(
+        self,
+        *,
+        migration_method: MySQLMigrateMethod,
+        seconds_behind_master: int,
+        stop_replication: bool = False,
+        reestablish_replication: bool = False,
+    ) -> None:
         LOGGER.info("Start migration of the following databases:")
         for db in self.databases:
             LOGGER.info("\t%s", db)
@@ -411,8 +442,12 @@ class MySQLMigration:
             assert os.access(self.output_meta_file.parent, os.W_OK), f"Meta file {self.output_meta_file} is not writable"
             self.output_meta_file.unlink(missing_ok=True)  # type: ignore
 
-        gtid = self._migrate_data(migration_method)
-        LOGGER.info("Migration of dump data has finished, GTID value from the dump: `%s`", gtid)
+        gtid = None
+        if reestablish_replication:
+            LOGGER.info("Flag 'reestablish-replication' is set. Skipping dump/restore step")
+        else:
+            gtid = self._migrate_data(migration_method)
+            LOGGER.info("Migration of dump data has finished, GTID value from the dump: `%s`", gtid)
 
         if self.output_meta_file:
             with self.output_meta_file.open("w") as meta_file:
@@ -422,8 +457,9 @@ class MySQLMigration:
         if migration_method == MySQLMigrateMethod.replication:
             LOGGER.info("Setting up replication to the target DB")
 
-            assert gtid, "GTID should be set"
-            self._set_gtid(gtid)
+            if not reestablish_replication:
+                assert gtid, "GTID should be set"
+                self._set_gtid(gtid)
             self._start_replication()
             self._ensure_target_replica_running()
 
