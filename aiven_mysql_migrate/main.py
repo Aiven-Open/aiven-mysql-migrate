@@ -82,6 +82,11 @@ def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Op
         choices=[e.value for e in MySQLMigrateTool],
         help="Tool to use for database dump and restore. Default: mysqldump"
     )
+    parser.add_argument(
+        "--reestablish-replication",
+        action="store_true",
+        help="Skip the dump/import step and proceed only if GTID is present on the target DB."
+    )
     parsed_args = parser.parse_args(args)
     setup_logging(debug=parsed_args.debug)
 
@@ -105,7 +110,11 @@ def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Op
     LOGGER.info("Starting pre-checks")
     dbs_max_total_size = None if parsed_args.dbs_max_total_size == -1 else parsed_args.dbs_max_total_size
     try:
-        migration_method = migration.run_checks(force_method=parsed_args.force_method, dbs_max_total_size=dbs_max_total_size)
+        migration_method = migration.run_checks(
+            force_method=parsed_args.force_method,
+            dbs_max_total_size=dbs_max_total_size,
+            reestablish_replication=parsed_args.reestablish_replication,
+        )
     except NothingToMigrateException:
         if not parsed_args.allow_source_without_dbs:
             raise
@@ -122,6 +131,11 @@ def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Op
         if parsed_args.force_method is not None:
             return f"{expected_method.capitalize()} method is not available."
 
+    if not migration_method == MySQLMigrateMethod.replication and parsed_args.reestablish_replication:
+        message = f"The --reestablish-replication option is not available for method {migration_method.capitalize()}"
+        LOGGER.info(message)
+        return message
+
     if parsed_args.validate_only:
         return None
 
@@ -130,6 +144,7 @@ def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Op
         migration_method=migration_method,
         seconds_behind_master=parsed_args.seconds_behind_master,
         stop_replication=parsed_args.stop_replication,
+        reestablish_replication=parsed_args.reestablish_replication,
     )
 
     LOGGER.info("Migration finished.")
