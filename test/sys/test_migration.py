@@ -87,7 +87,7 @@ def test_migration_replication(
     assert server_uuid in meta["dump_gtids"]
 
     with dst.cur() as cur:
-        cur.execute(f"SELECT ID FROM {db_name}.test")
+        cur.execute(f"SELECT ID FROM `{db_name}`.`test`")
         res = cur.fetchall()
         assert len(res) == 1 and res[0]["ID"] == "test_data"
 
