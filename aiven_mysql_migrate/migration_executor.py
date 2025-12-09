@@ -85,7 +85,7 @@ class ProcessExecutor:
                     continue
 
                 LOGGER.debug("dump: %s", processed_line)
-                self.import_proc.stdin.write(processed_line)
+                self.import_proc.stdin.write(processed_line + "\n")
                 self.import_proc.stdin.flush()
                 for handler in logging.getHandlerNames():
                     logging.getHandlerByName(handler).flush()
