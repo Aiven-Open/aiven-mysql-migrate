@@ -143,9 +143,12 @@ class MyDumperTool(MySQLMigrationToolBase):
         skip_column_stats: bool,
         *,
         dump_tool_name: MySQLMigrateTool = MySQLMigrateTool.mydumper,
+        temp_dir: Optional[Path] = None,
     ):
         super().__init__(source, target, databases, skip_column_stats, dump_tool_name=dump_tool_name)
-        self.temp_dir: Optional[tempfile.TemporaryDirectory] = None
+        self._base_temp_dir: Optional[Path] = temp_dir
+        self.temp_dir_path: Optional[Path] = None
+        self._temp_dir_obj: Optional[tempfile.TemporaryDirectory] = None
         self.temp_cnf_file: Optional[Path] = None
         self.temp_target_cnf_file: Optional[Path] = None
         self.dump_output_dir: Optional[Path] = None
@@ -153,23 +156,26 @@ class MyDumperTool(MySQLMigrationToolBase):
     def setup(self) -> None:
         """Setup temporary resources for migration."""
 
-        if not self.temp_dir:
-            self.temp_dir = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
+        if not self.temp_dir_path:
+            # pylint: disable=consider-using-with
+            self._temp_dir_obj = tempfile.TemporaryDirectory(dir=self._base_temp_dir, prefix="mydumper_")
+            self.temp_dir_path = Path(self._temp_dir_obj.name)
+            self._base_temp_dir = None  # No longer needed after setup
             self.temp_cnf_file = self._create_temp_cnf_file(self.source, "source.cnf")
             self.temp_target_cnf_file = self._create_temp_cnf_file(self.target, "target.cnf")
             self.dump_output_dir = self._get_dump_output_dir()
 
     def _create_dump_processor(self) -> DumpProcessor:
         """Create MydumperDumpProcessor for mydumper tool."""
-        assert self.dump_output_dir and self.temp_dir is not None, (
+        assert self.dump_output_dir and self.temp_dir_path is not None, (
             "setup() must be called before creating dump processor"
         )
         return MydumperDumpProcessor(dump_output_dir=self.dump_output_dir)
 
     def _create_temp_cnf_file(self, connection_info: MySQLConnectionInfo, filename: str = "connection.cnf") -> Path:
         """Create temporary .cnf file with credentials for secure password handling."""
-        assert self.temp_dir is not None, "Temporary directory must be created before creating cnf file"
-        temp_cnf_path = Path(self.temp_dir.name) / filename
+        assert self.temp_dir_path is not None, "Temporary directory must be created before creating cnf file"
+        temp_cnf_path = self.temp_dir_path / filename
 
         with temp_cnf_path.open('w') as temp_cnf:
             temp_cnf.write(textwrap.dedent(
@@ -191,8 +197,8 @@ class MyDumperTool(MySQLMigrationToolBase):
     def _get_dump_output_dir(self) -> Path:
         """Get or create the dump output directory (subdirectory of temp_dir)."""
         if not self.dump_output_dir:
-            assert self.temp_dir is not None, "temp_dir must exist at this point"
-            self.dump_output_dir = Path(self.temp_dir.name) / "dump_output"
+            assert self.temp_dir_path is not None, "temp_dir_path must exist at this point"
+            self.dump_output_dir = self.temp_dir_path / "dump_output"
             self.dump_output_dir.mkdir(parents=True, exist_ok=True)
 
         return self.dump_output_dir
@@ -265,12 +271,13 @@ class MyDumperTool(MySQLMigrationToolBase):
     def cleanup(self) -> None:
         """Cleanup temporary resources."""
         super().cleanup()
-        if self.temp_dir:
-            self.temp_dir.cleanup()
-            self.temp_dir = None
-
-            self.temp_cnf_file = None
-            self.temp_target_cnf_file = None
+        if self._temp_dir_obj:
+            self._temp_dir_obj.cleanup()
+            self._temp_dir_obj = None
+        self.temp_dir_path = None
+        self.temp_cnf_file = None
+        self.temp_target_cnf_file = None
+        self.dump_output_dir = None
 
 
 def get_dump_tool(
@@ -279,11 +286,13 @@ def get_dump_tool(
     target: MySQLConnectionInfo,
     databases: List[str],
     skip_column_stats: bool,
+    *,
+    temp_dir: Optional[Path] = None,
 ) -> MySQLMigrationToolBase:
     """Factory function to create dump tool instances."""
     if tool_name == MySQLMigrateTool.mysqldump:
         return MySQLDumpTool(source, target, databases, skip_column_stats, dump_tool_name=tool_name)
     elif tool_name == MySQLMigrateTool.mydumper:
-        return MyDumperTool(source, target, databases, skip_column_stats, dump_tool_name=tool_name)
+        return MyDumperTool(source, target, databases, skip_column_stats, dump_tool_name=tool_name, temp_dir=temp_dir)
     else:
         raise NotImplementedError(f"Unknown dump tool: {tool_name}")

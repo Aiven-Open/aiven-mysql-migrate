@@ -346,8 +346,8 @@ class TestMyDumperTool:
         # Verify temp files exist
         assert tool.temp_cnf_file is not None
         assert tool.temp_cnf_file.exists()
-        assert tool.temp_dir is not None
-        assert Path(tool.temp_dir.name).exists()
+        assert tool.temp_dir_path is not None
+        assert tool.temp_dir_path.exists()
 
         # Check file permissions (should be 0600)
         assert stat.S_IMODE(tool.temp_cnf_file.stat().st_mode) == 0o600
@@ -385,7 +385,7 @@ class TestMyDumperTool:
         tool = MyDumperTool(source_connection, target_connection, databases_fixture, skip_column_stats=False)
         tool.setup()
 
-        temp_dir_path = Path(tool.temp_dir.name)
+        temp_dir_path = tool.temp_dir_path
         temp_cnf_path = tool.temp_cnf_file
 
         # Verify files exist before cleanup
