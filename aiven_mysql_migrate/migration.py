@@ -196,7 +196,7 @@ class MySQLMigration:
             )
             source_size = cur.fetchone()["size"] or 0
         if source_size > max_size:
-            raise DatabaseTooLargeException()
+            raise DatabaseTooLargeException(f"Database is larger than the maximum size of {max_size} bytes")
 
     def _check_bin_log_format(self):
         with self.source.cur() as cur:
@@ -213,7 +213,7 @@ class MySQLMigration:
                 (source_server_uuid,)
             )
             if cur.fetchone()["included"] != 1:
-                raise IncompatibleGtidsException()
+                raise IncompatibleGtidsException("gtid_executed on target server doesn't match gtid from source")
 
     def run_checks(
         self,
@@ -358,7 +358,7 @@ class MySQLMigration:
                 cur.execute("SHOW SLAVE STATUS")
                 rows = cur.fetchall()
                 if not rows:
-                    raise ReplicaSetupException()
+                    raise ReplicaSetupException("SHOW SLAVE STATUS didn't return any rows")
 
                 try:
                     slave_status = next(
@@ -366,14 +366,15 @@ class MySQLMigration:
                         if row["Master_Host"] == self.source.hostname and row["Master_Port"] == self.source.port
                     )
                 except StopIteration as e:
-                    raise ReplicaSetupException() from e
+                    raise ReplicaSetupException("Replication didn't start, Master info not available") from e
 
                 if slave_status["Slave_IO_Running"] == "Yes" and slave_status["Slave_SQL_Running"] == "Yes":
                     return
 
                 time.sleep(check_interval)
 
-            raise ReplicaSetupException()
+            raise ReplicaSetupException(f"Replication didn't start after {retries} "
+                                        f"retries with interval {check_interval} seconds")
 
     def _wait_for_replication(self, *, seconds_behind_master: int = 0, check_interval: float = 2.0):
         LOGGER.info("Wait for replication to catch up")
@@ -383,7 +384,7 @@ class MySQLMigration:
                 cur.execute("SHOW SLAVE STATUS")
                 rows = cur.fetchall()
                 if not rows:
-                    raise ReplicaSetupException()
+                    raise ReplicaSetupException("SHOW SLAVE STATUS didn't return any rows")
 
                 try:
                     slave_status = next(
@@ -391,11 +392,11 @@ class MySQLMigration:
                         if row["Master_Host"] == self.source.hostname and row["Master_Port"] == self.source.port
                     )
                 except StopIteration as e:
-                    raise ReplicaSetupException() from e
+                    raise ReplicaSetupException("Replication didn't catch up, Master info not available") from e
 
                 lag = slave_status["Seconds_Behind_Master"]
                 if lag is None:
-                    raise ReplicaSetupException()
+                    raise ReplicaSetupException("Replication didn't catch up, Seconds_Behind_Master is null")
 
                 LOGGER.info("Current replication lag: %s seconds", lag)
                 if lag <= seconds_behind_master:
