@@ -87,6 +87,13 @@ def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Op
         action="store_true",
         help="Skip the dump/import step and proceed only if GTID is present on the target DB."
     )
+    parser.add_argument(
+        "--temp-dir",
+        type=Path,
+        required=False,
+        default=None,
+        help="Directory path for temporary files (MyDumper only)."
+    )
     parsed_args = parser.parse_args(args)
     setup_logging(debug=parsed_args.debug)
 
@@ -102,6 +109,7 @@ def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Op
         output_meta_file=parsed_args.output_meta_file,
         dump_tool=parsed_args.dump_tool,
         output_error_file=parsed_args.output_error_file,
+        temp_dir=parsed_args.temp_dir,
     )
     migration.setup_signal_handlers()
 

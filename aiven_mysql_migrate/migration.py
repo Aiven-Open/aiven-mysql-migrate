@@ -46,6 +46,7 @@ class MySQLMigration:
         output_meta_file: Optional[Path] = None,
         dump_tool: MySQLMigrateTool = MySQLMigrateTool.mysqldump,
         output_error_file: Optional[Path] = None,
+        temp_dir: Optional[Path] = None,
     ):
         self.dump_tool_name = dump_tool
         self.dump_tool: Optional[MySQLMigrationToolBase] = None
@@ -67,6 +68,7 @@ class MySQLMigration:
             self.privilege_check_user = PrivilegeCheckUser.parse(privilege_check_user)
         self.output_meta_file = output_meta_file
         self.output_error_file = output_error_file
+        self.temp_dir = temp_dir
 
     def setup_signal_handlers(self):
         signal.signal(signal.SIGINT, self._stop_migration)
@@ -294,7 +296,8 @@ class MySQLMigration:
             self.source,
             self.target,
             self.databases,
-            self.skip_column_stats
+            self.skip_column_stats,
+            temp_dir=self.temp_dir,
         )
 
         return self.dump_tool.execute_migration(migration_method)
