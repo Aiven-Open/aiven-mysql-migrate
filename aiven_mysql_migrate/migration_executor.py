@@ -76,6 +76,8 @@ class ProcessExecutor:
 
         def _reader_stdout():
             for line in self.dump_proc.stdout:
+                if line.startswith('DELIMITER ;/*!50003 SET'):
+                    LOGGER.info("Detected DELIMITER ;/*!50003 SET")
                 if line_processor:
                     processed_line = line_processor(line)
                 else:
