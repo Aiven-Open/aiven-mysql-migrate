@@ -52,6 +52,10 @@ def my_wait(host, ssl=True, retries=MYSQL_WAIT_RETRIES) -> MySQLConnectionInfo:
         (my_wait("mysql80-src-2"), my_wait("mysql80-dst-2"), "mysqldump"),
         (my_wait("mysql80-src-2"), my_wait("mysql80-dst-2"), "mydumper"),
 
+        (my_wait("mysql80-src-2"), my_wait("mysql84-dst-4"), "mysqldump"),
+        (my_wait("mysql84-src-5"), my_wait("mysql84-dst-4"), "mysqldump"),
+        (my_wait("mysql80-src-2"), my_wait("mysql84-dst-4"), "mydumper"),
+        (my_wait("mysql84-src-5"), my_wait("mysql84-dst-4"), "mydumper"),
     ]
 )
 def test_migration_replication(
@@ -111,7 +115,10 @@ def test_migration_replication(
         (my_wait("mysql57-src-1"), my_wait("mysql80-dst-1"), "mysqldump"),
         (my_wait("mysql80-src-2"), my_wait("mysql80-dst-2"), "mysqldump"),
         (my_wait("mysql80-src-2"), my_wait("mysql80-dst-2"), "mydumper"),
-
+        (my_wait("mysql80-src-2"), my_wait("mysql84-dst-4"), "mysqldump"),
+        (my_wait("mysql84-src-5"), my_wait("mysql84-dst-4"), "mysqldump"),
+        (my_wait("mysql80-src-2"), my_wait("mysql84-dst-4"), "mydumper"),
+        (my_wait("mysql84-src-5"), my_wait("mysql84-dst-4"), "mydumper"),
     ]
 )
 def test_migration_replication_with_reestablish_replication(
@@ -231,6 +238,15 @@ def test_migration_fallback(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, 
         ),
         (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3"), MySQLMigrateMethod.dump, does_not_raise(), "mysqldump"),
         (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3"), MySQLMigrateMethod.dump, does_not_raise(), "mydumper"),
+
+        (my_wait("mysql80-src-2"), my_wait("mysql84-dst-4"), MySQLMigrateMethod.replication, does_not_raise(), "mysqldump"),
+        (my_wait("mysql84-src-5"), my_wait("mysql84-dst-4"), MySQLMigrateMethod.replication, does_not_raise(), "mysqldump"),
+        (my_wait("mysql80-src-2"), my_wait("mysql84-dst-4"), MySQLMigrateMethod.replication, does_not_raise(), "mydumper"),
+        (my_wait("mysql84-src-5"), my_wait("mysql84-dst-4"), MySQLMigrateMethod.replication, does_not_raise(), "mydumper"),
+        (my_wait("mysql80-src-2"), my_wait("mysql84-dst-4"), MySQLMigrateMethod.dump, does_not_raise(), "mysqldump"),
+        (my_wait("mysql84-src-5"), my_wait("mysql84-dst-4"), MySQLMigrateMethod.dump, does_not_raise(), "mysqldump"),
+        (my_wait("mysql80-src-2"), my_wait("mysql84-dst-4"), MySQLMigrateMethod.dump, does_not_raise(), "mydumper"),
+        (my_wait("mysql84-src-5"), my_wait("mysql84-dst-4"), MySQLMigrateMethod.dump, does_not_raise(), "mydumper"),
     ]
 )
 def test_force_migration_method(  # pylint: disable=too-many-positional-arguments
@@ -260,6 +276,10 @@ def test_force_migration_method(  # pylint: disable=too-many-positional-argument
     "src,dst,dump_tool", [
         (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3"), "mysqldump"),
         (my_wait("mysql80-src-3"), my_wait("mysql80-dst-3"), "mydumper"),
+        (my_wait("mysql80-src-2"), my_wait("mysql84-dst-4"), "mysqldump"),
+        (my_wait("mysql84-src-5"), my_wait("mysql84-dst-4"), "mysqldump"),
+        (my_wait("mysql80-src-2"), my_wait("mysql84-dst-4"), "mydumper"),
+        (my_wait("mysql84-src-5"), my_wait("mysql84-dst-4"), "mydumper"),
     ]
 )
 def test_database_size_check(src, dst, dump_tool, db_name):
