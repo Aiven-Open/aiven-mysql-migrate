@@ -99,8 +99,8 @@ class MySQLMigration:
         LOGGER.info("Checking MySQL versions for replication support")
 
         if (
-            LooseVersion("5.7.0") <= LooseVersion(self.source.version) < LooseVersion("8.1")
-            and LooseVersion("8.0.0") <= LooseVersion(self.target.version) < LooseVersion("8.1")
+            LooseVersion("5.7.0") <= LooseVersion(self.source.version) < LooseVersion("8.5")
+            and LooseVersion("8.0.0") <= LooseVersion(self.target.version) < LooseVersion("8.5")
         ):
             LOGGER.info("\tSource - %s, target - %s -- OK", self.source.version, self.target.version)
         else:
@@ -142,11 +142,17 @@ class MySQLMigration:
                 gtid_mode = select_global_var(cur, "gtid_mode")
                 if gtid_mode.upper() != "ON":
                     raise GTIDModeDisabledException(f"GTID mode should be enabled on the {conn_info.name}")
-                cur.execute("SHOW MASTER STATUS")
+
+                if conn_info.version >= LooseVersion("8.2.0"):
+                    show_status_query = "SHOW BINARY LOG STATUS"
+                else:
+                    show_status_query = "SHOW MASTER STATUS"
+                cur.execute(show_status_query)
+
                 master_status = cur.fetchone()
                 if master_status is None:
                     raise GTIDModeDisabledException(
-                        f"GTID mode should be enabled on the {conn_info.name}: SHOW MASTER STATUS is empty"
+                        f"GTID mode should be enabled on the {conn_info.name}: {show_status_query} is empty"
                     )
                 executed_gtid_set = master_status.get("Executed_Gtid_Set", None)
                 if not executed_gtid_set:
@@ -157,7 +163,9 @@ class MySQLMigration:
     def _check_user_can_replicate(self):
         LOGGER.info("Checking if user has replication grants on the source")
 
-        user_can_replicate = any(grant in self.source.global_grants for grant in ("REPLICATION SLAVE", "ALL PRIVILEGES"))
+        user_can_replicate = any(
+            grant in self.source.global_grants for grant in ("REPLICATION SLAVE", "ALL PRIVILEGES", "REPLICATION CLIENT")
+        )
         if not user_can_replicate:
             raise MissingReplicationGrants("User does not have replication permissions")
 
@@ -277,17 +285,17 @@ class MySQLMigration:
 
         return migration_method
 
-    def _stop_and_reset_slave(self):
+    def _stop_and_reset_replica(self):
         LOGGER.info("Stopping replication on target database")
 
         with self.target_master.cur() as cur:
-            cur.execute("STOP SLAVE")
-            cur.execute("RESET SLAVE ALL")
+            cur.execute("STOP REPLICA")
+            cur.execute("RESET REPLICA ALL")
 
     def _stop_replication(self):
         LOGGER.info("Stopping replication")
 
-        self._stop_and_reset_slave()
+        self._stop_and_reset_replica()
 
     def _migrate_data(self, migration_method: MySQLMigrateMethod) -> Optional[str]:
         """Migrate data using the configured dump tool, return GTID from the dump"""
@@ -323,9 +331,9 @@ class MySQLMigration:
 
         with self.target_master.cur() as cur:
             query = (
-                "CHANGE MASTER TO MASTER_HOST = %s, MASTER_PORT = %s, MASTER_USER = %s, MASTER_PASSWORD = %s, "
-                f"MASTER_AUTO_POSITION = 1, MASTER_SSL = {1 if self.source.ssl else 0}, "
-                "MASTER_SSL_VERIFY_SERVER_CERT = 0, MASTER_SSL_CA = '', MASTER_SSL_CAPATH = ''"
+                "CHANGE REPLICATION SOURCE TO SOURCE_HOST = %s, SOURCE_PORT = %s, SOURCE_USER = %s, SOURCE_PASSWORD = %s, "
+                f"SOURCE_AUTO_POSITION = 1, SOURCE_SSL = {1 if self.source.ssl else 0}, "
+                "SOURCE_SSL_VERIFY_SERVER_CERT = 0, SOURCE_SSL_CA = '', SOURCE_SSL_CAPATH = ''"
             )
             if LooseVersion(self.target.version) >= LooseVersion("8.0.19"):
                 query += ", REQUIRE_ROW_FORMAT = 1"
@@ -351,27 +359,27 @@ class MySQLMigration:
                 f"CHANGE REPLICATION FILTER REPLICATE_WILD_IGNORE_TABLE = ({', '.join('%s' for _ in self.ignore_dbs)})",
                 [f"{db}.%" for db in self.ignore_dbs]
             )
-            cur.execute("START SLAVE")
+            cur.execute("START REPLICA")
 
     def _ensure_target_replica_running(self, check_interval: float = 2.0, retries: int = 30):
         LOGGER.info("Ensure replica is running")
 
         with self.target.cur() as cur:
             for _ in range(retries):
-                cur.execute("SHOW SLAVE STATUS")
+                cur.execute("SHOW REPLICA STATUS")
                 rows = cur.fetchall()
                 if not rows:
-                    raise ReplicaSetupException("SHOW SLAVE STATUS didn't return any rows")
+                    raise ReplicaSetupException("SHOW REPLICA STATUS didn't return any rows")
 
                 try:
-                    slave_status = next(
+                    replica_status = next(
                         row for row in rows
-                        if row["Master_Host"] == self.source.hostname and row["Master_Port"] == self.source.port
+                        if row["Source_Host"] == self.source.hostname and row["Source_Port"] == self.source.port
                     )
                 except StopIteration as e:
-                    raise ReplicaSetupException("Replication didn't start, Master info not available") from e
+                    raise ReplicaSetupException("Replication didn't start, Source info not available") from e
 
-                if slave_status["Slave_IO_Running"] == "Yes" and slave_status["Slave_SQL_Running"] == "Yes":
+                if replica_status["Replica_IO_Running"] == "Yes" and replica_status["Replica_SQL_Running"] == "Yes":
                     return
 
                 time.sleep(check_interval)
@@ -384,22 +392,22 @@ class MySQLMigration:
 
         while True:
             with self.target.cur() as cur:
-                cur.execute("SHOW SLAVE STATUS")
+                cur.execute("SHOW REPLICA STATUS")
                 rows = cur.fetchall()
                 if not rows:
-                    raise ReplicaSetupException("SHOW SLAVE STATUS didn't return any rows")
+                    raise ReplicaSetupException("SHOW REPLICA STATUS didn't return any rows")
 
                 try:
-                    slave_status = next(
+                    replica_status = next(
                         row for row in rows
-                        if row["Master_Host"] == self.source.hostname and row["Master_Port"] == self.source.port
+                        if row["Source_Host"] == self.source.hostname and row["Source_Port"] == self.source.port
                     )
                 except StopIteration as e:
-                    raise ReplicaSetupException("Replication didn't catch up, Master info not available") from e
+                    raise ReplicaSetupException("Replication didn't catch up, source info not available") from e
 
-                lag = slave_status["Seconds_Behind_Master"]
+                lag = replica_status["Seconds_Behind_Source"]
                 if lag is None:
-                    raise ReplicaSetupException("Replication didn't catch up, Seconds_Behind_Master is null")
+                    raise ReplicaSetupException("Replication didn't catch up, Seconds_Behind_Source is null")
 
                 LOGGER.info("Current replication lag: %s seconds", lag)
                 if lag <= seconds_behind_master:
