@@ -1,6 +1,8 @@
+.claude/
 .idea/
 .mypy_cache/
 .cursor/
+.venv/
 *.egg-info/
 __pycache__/
 dist/
