@@ -224,7 +224,7 @@ class MyDumperTool(MySQLMigrationToolBase):
             "--events",
             "--routines",
             "--chunk-filesize=1024",
-            "--sync-thread-lock-mode=FTWRL",
+            "--sync-thread-lock-mode=AUTO",
             "--no-backup-locks",
             "--skip-ddl-locks",
             "--checksum-all",

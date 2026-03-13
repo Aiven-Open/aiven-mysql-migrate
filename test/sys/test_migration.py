@@ -96,12 +96,12 @@ def test_migration_replication(
         assert len(res) == 1 and res[0]["ID"] == "test_data"
 
     with src.cur() as cur:
-        cur.execute(f"INSERT INTO {db_name}.test (ID) VALUES (%s)", ["repl_data"])
+        cur.execute(f"INSERT INTO `{db_name}`.`test` (ID) VALUES (%s)", ["repl_data"])
         cur.execute("COMMIT")
 
     for _ in range(5):
         with dst.cur() as cur:
-            cur.execute(f"SELECT ID FROM {db_name}.test")
+            cur.execute(f"SELECT ID FROM `{db_name}`.`test`")
             res = cur.fetchall()
             if len(res) == 2 and sorted(["test_data", "repl_data"]) == sorted([item["ID"] for item in res]):
                 return
@@ -154,7 +154,7 @@ def test_migration_replication_with_reestablish_replication(
     assert server_uuid in meta["dump_gtids"]
 
     with dst.cur() as cur:
-        cur.execute(f"SELECT ID FROM {db_name}.test")
+        cur.execute(f"SELECT ID FROM `{db_name}`.`test`")
         res = cur.fetchall()
         assert len(res) == 1 and res[0]["ID"] == "test_data"
 
@@ -162,7 +162,7 @@ def test_migration_replication_with_reestablish_replication(
         cur.execute("STOP REPLICA FOR CHANNEL ''")
 
     with src.cur() as cur:
-        cur.execute(f"INSERT INTO {db_name}.test (ID) VALUES (%s)", ["repl_data"])
+        cur.execute(f"INSERT INTO `{db_name}`.`test` (ID) VALUES (%s)", ["repl_data"])
         cur.execute("COMMIT")
 
     migration = MySQLMigration(
@@ -179,7 +179,7 @@ def test_migration_replication_with_reestablish_replication(
 
     for _ in range(5):
         with dst.cur() as cur:
-            cur.execute(f"SELECT ID FROM {db_name}.test")
+            cur.execute(f"SELECT ID FROM `{db_name}`.`test`")
             res = cur.fetchall()
             if len(res) == 2 and sorted(["test_data", "repl_data"]) == sorted([item["ID"] for item in res]):
                 return
@@ -215,11 +215,11 @@ def test_migration_fallback(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, 
     migration.start(migration_method=method, seconds_behind_master=0)
 
     with dst.cur() as cur:
-        cur.execute(f"SELECT ID FROM {db_name}.test")
+        cur.execute(f"SELECT ID FROM `{db_name}`.`test`")
         res = cur.fetchall()
         assert len(res) == 1 and res[0]["ID"] == "test_data"
 
-        cur.execute(f"call {db_name}.test_proc(@body)")
+        cur.execute(f"call `{db_name}`.`test_proc`(@body)")
         res = cur.fetchall()
         assert len(res) == 1 and res[0]["test_body"] == "test_body"
 
