@@ -257,7 +257,6 @@ class MyDumperTool(MySQLMigrationToolBase):
             f"--directory={self.dump_output_dir}",
             "--optimize-keys=AFTER_IMPORT_ALL_TABLES",
             "--compress-protocol=zstd",
-            "--overwrite-tables",
             "--skip-definer",
             "--verbose=4",
             "--stream=NO_STREAM",
