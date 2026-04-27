@@ -356,7 +356,8 @@ class TestMyDumperTool:
 
         # Verify [client] section exists
         assert "client" in config.sections()
-        assert len(config.sections()) == 1, "File should contain only [client] section"
+        assert "myloader_session_variables" in config.sections()
+        assert len(config.sections()) == 2, "File should contain only [client] and [myloader_session_variables] section"
 
         # Verify exact key-value pairs
         client_section = config["client"]

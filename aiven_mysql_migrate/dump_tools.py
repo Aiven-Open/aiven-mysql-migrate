@@ -189,6 +189,8 @@ class MyDumperTool(MySQLMigrationToolBase):
             )
             if connection_info.ssl:
                 temp_cnf.write("ssl-mode=REQUIRED\n")
+            temp_cnf.write("[myloader_session_variables]\n")
+            temp_cnf.write("sql_require_primary_key=OFF\n")
 
         # Set secure permissions
         os.chmod(temp_cnf_path, 0o600)
