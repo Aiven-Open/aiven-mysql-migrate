@@ -2,17 +2,39 @@
 from aiven_mysql_migrate.enums import MySQLMigrateTool
 from aiven_mysql_migrate.exceptions import MySQLDumpException, MySQLImportException
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, DumpProcessor, select_global_var
+from collections import deque
 from concurrent import futures
 from subprocess import Popen
-from typing import Callable, List, Optional
+from typing import Callable, Deque, List, Optional
 
 import concurrent
 import logging
+import re
 import resource
 import subprocess
 import sys
 
 LOGGER = logging.getLogger(__name__)
+
+STDERR_TAIL_LINES = 100
+STDERR_TAIL_MAX_BYTES = 2048
+STDERR_FALLBACK_LINES = 20
+# mydumper/myloader surface fatal worker failures via GLib's g_critical()
+# ("** (tool:pid): CRITICAL **: ...") and the MySQL client library reports
+# server errors as "ERROR NNNN". When a process exits non-zero, we prefer
+# those lines over generic log noise when building the user-visible message.
+_STDERR_SIGNAL_RE = re.compile(r"CRITICAL \*\*:|ERROR \d{3,4}")
+
+
+def _format_stderr_tail(buf: "Deque[str]") -> str:
+    if not buf:
+        return ""
+    signal_lines = [line for line in buf if _STDERR_SIGNAL_RE.search(line)]
+    selected = signal_lines if signal_lines else list(buf)[-STDERR_FALLBACK_LINES:]
+    tail = "".join(selected).strip()
+    if len(tail) > STDERR_TAIL_MAX_BYTES:
+        tail = "..." + tail[-(STDERR_TAIL_MAX_BYTES - 3):]
+    return tail
 
 
 class ProcessExecutor:
@@ -94,26 +116,55 @@ class ProcessExecutor:
             self.import_proc.stdin.flush()
             self.import_proc.stdin.close()
 
-        def _reader_stderr(proc):
+        dump_stderr_tail: Deque[str] = deque(maxlen=STDERR_TAIL_LINES)
+        import_stderr_tail: Deque[str] = deque(maxlen=STDERR_TAIL_LINES)
+
+        def _reader_stderr(proc, sink: Deque[str]):
+            # Once we've captured a critical line (CRITICAL / ERROR NNNN), stop
+            # appending non-critical lines so a subsequent flood of warnings
+            # can't evict the critical from the bounded deque.
+            critical_seen = False
             for line in proc.stderr:
                 sys.stderr.write(line)
+                if (is_critical := _STDERR_SIGNAL_RE.search(line)) or not critical_seen:
+                    sink.append(line)
+                if is_critical:
+                    critical_seen = True
 
+        reader_exc: Optional[BaseException] = None
         with futures.ThreadPoolExecutor(max_workers=3) as executor:
-            for future in concurrent.futures.as_completed([
+            submitted = [
                 executor.submit(_reader_stdout),
-                executor.submit(_reader_stderr, self.dump_proc),
-                executor.submit(_reader_stderr, self.import_proc)
-            ]):
-                future.result()
+                executor.submit(_reader_stderr, self.dump_proc, dump_stderr_tail),
+                executor.submit(_reader_stderr, self.import_proc, import_stderr_tail),
+            ]
+            for future in concurrent.futures.as_completed(submitted):
+                try:
+                    future.result()
+                except BaseException as exc:  # pylint: disable=broad-except
+                    LOGGER.debug("Reader task raised: %s", exc)
+                    if reader_exc is None:
+                        reader_exc = exc
 
         export_code = self.dump_proc.wait()
         import_code = self.import_proc.wait()
 
         if export_code != 0:
-            raise MySQLDumpException(f"Error while exporting data from the source database, exit code: {export_code}")
+            tail = _format_stderr_tail(dump_stderr_tail)
+            msg = f"Error while exporting data from the source database, exit code: {export_code}"
+            if tail:
+                msg += f". Last stderr: {tail}"
+            raise MySQLDumpException(msg)
 
         if import_code != 0:
-            raise MySQLImportException(f"Error while importing data into the target database, exit code: {import_code}")
+            tail = _format_stderr_tail(import_stderr_tail)
+            msg = f"Error while importing data into the target database, exit code: {import_code}"
+            if tail:
+                msg += f". Last stderr: {tail}"
+            raise MySQLImportException(msg)
+
+        if reader_exc is not None:
+            raise reader_exc
 
         gtid = dump_processor.get_gtid() if dump_processor else None
         return gtid
