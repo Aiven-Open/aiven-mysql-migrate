@@ -265,6 +265,7 @@ class MyDumperTool(MySQLMigrationToolBase):
             "--drop-table",
             "--drop-database",
             "--checksum",
+            "--ignore-set=SQL_LOG_BIN",
         ]
 
         return cmd

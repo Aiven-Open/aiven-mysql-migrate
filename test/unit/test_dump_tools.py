@@ -170,6 +170,7 @@ def _build_myloader_cmd():
         "--drop-table",
         "--drop-database",
         "--checksum",
+        "--ignore-set=SQL_LOG_BIN"
     ]
 
 
