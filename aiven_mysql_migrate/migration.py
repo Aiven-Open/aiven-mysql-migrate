@@ -214,6 +214,26 @@ class MySQLMigration:
             if row_format.upper() != "ROW":
                 raise UnsupportedBinLogFormatException(f"Unsupported binary log format: {row_format}, only ROW is supported")
 
+    def _check_preserve_commit_order_on(self):
+        replica_slave = "slave" if LooseVersion(self.source.version) < LooseVersion("8.0") else "replica"
+
+        with self.source.cur() as cur:
+            cur.execute(f"SHOW {replica_slave.upper()} STATUS")
+            rows = cur.fetchall()
+            if not rows:
+                LOGGER.info("Skipping preserve commit order: source is not replica")
+                return
+            # https://dev.mysql.com/doc/mysql-replication-excerpt/8.0/en/replication-options-replica.html#sysvar_replica_parallel_workers
+            # When replica_parallel_workers is equal to 1, replica_preserve_commit_order has no effect and is ignored.
+            if select_global_var(cur, f"{replica_slave}_parallel_workers") == 1:
+                LOGGER.info("Skipping preserve commit order: %s_parallel_workers=1", replica_slave)
+                return
+
+            if select_global_var(cur, f"{replica_slave}_preserve_commit_order") != 1:
+                LOGGER.info("Replication is not available: %s_preserve_commit_order=OFF", replica_slave)
+                raise ReplicationNotAvailableException(f"{replica_slave}_preserve_commit_order is OFF,"
+                                                       f" replication is not available")
+
     def _check_source_target_uuids_aligned(self):
         with self.source.cur() as cur:
             source_server_uuid = select_global_var(cur, "server_uuid")
@@ -230,6 +250,7 @@ class MySQLMigration:
         force_method: Optional[MySQLMigrateMethod] = None,
         dbs_max_total_size: Optional[float] = None,
         reestablish_replication: bool = False,
+        require_preserve_commit_order: bool = False
     ) -> MySQLMigrateMethod:
         """Raises an exception if one of the pre-checks fails, otherwise a method to be used for migration.
         If force_method is set, re-raises validation exceptions in case the chosen method is not possible."""
@@ -276,6 +297,9 @@ class MySQLMigration:
             self._check_engine_support()
             self._check_server_id_overlapping()
             self._check_bin_log_format()
+            if require_preserve_commit_order:
+                LOGGER.debug("require_preserve_commit_order is enabled")
+                self._check_preserve_commit_order_on()
         except ReplicationNotAvailableException as e:
             if not fallback_to_dump_method:
                 raise

@@ -1,3 +1,5 @@
+from looseversion import LooseVersion
+
 from aiven_mysql_migrate.config import IGNORE_SYSTEM_DATABASES
 from aiven_mysql_migrate.enums import MySQLMigrateTool, MySQLMigrateMethod
 from aiven_mysql_migrate.exceptions import (
@@ -51,7 +53,6 @@ def my_wait(host, ssl=True, retries=MYSQL_WAIT_RETRIES) -> MySQLConnectionInfo:
         (my_wait("mysql57-src-1"), my_wait("mysql80-dst-1"), "mysqldump"),
         (my_wait("mysql80-src-2"), my_wait("mysql80-dst-2"), "mysqldump"),
         (my_wait("mysql80-src-2"), my_wait("mysql80-dst-2"), "mydumper"),
-
         (my_wait("mysql80-src-2"), my_wait("mysql84-dst-4"), "mysqldump"),
         (my_wait("mysql84-src-5"), my_wait("mysql84-dst-4"), "mysqldump"),
         (my_wait("mysql80-src-2"), my_wait("mysql84-dst-4"), "mydumper"),
@@ -222,6 +223,68 @@ def test_migration_fallback(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, 
         cur.execute(f"call `{db_name}`.`test_proc`(@body)")
         res = cur.fetchall()
         assert len(res) == 1 and res[0]["test_body"] == "test_body"
+
+
+@mark.parametrize(
+    "src,dst,migration_method,replica", [
+        (
+                my_wait("mysql57-src-preserve-commit-order-off"),
+                my_wait("mysql84-dst-4"),
+                MySQLMigrateMethod.replication,
+                False),
+        (
+                my_wait("mysql57-src-preserve-commit-order-off"),
+                my_wait("mysql84-dst-4"),
+                MySQLMigrateMethod.dump,
+                True),
+        (
+                my_wait("mysql57-src-1"),
+                my_wait("mysql84-dst-4"),
+                MySQLMigrateMethod.replication,
+                True),
+        (
+                my_wait("mysql84-src-preserve-commit-order-off"),
+                my_wait("mysql84-dst-4"),
+                MySQLMigrateMethod.replication,
+                False),
+        (
+                my_wait("mysql84-src-preserve-commit-order-off"),
+                my_wait("mysql84-dst-4"),
+                MySQLMigrateMethod.dump,
+                True),
+        (
+                my_wait("mysql84-src-5"),
+                my_wait("mysql84-dst-4"),
+                MySQLMigrateMethod.replication,
+                True),
+    ]
+)
+def test_migration_preserve_order(src: MySQLConnectionInfo,
+                                  dst: MySQLConnectionInfo,
+                                  migration_method: MySQLMigrateMethod,
+                                  replica: bool,
+                                  db_name: str) -> None:
+    with src.cur() as cur:
+        cur.execute(f"CREATE DATABASE `{db_name}`")
+        cur.execute(f"USE `{db_name}`")
+        cur.execute("CREATE TABLE test (ID TEXT)")
+        cur.execute("INSERT INTO test (ID) VALUES (%s)", ["test_data"])
+        cur.execute("CREATE PROCEDURE test_proc (OUT body TEXT) BEGIN SELECT 'test_body'; END")
+        cur.execute("COMMIT")
+        if replica:
+            if src.version < LooseVersion("8.0"):
+                cur.execute("CHANGE MASTER TO MASTER_HOST='host.com'")
+            else:
+                cur.execute("CHANGE REPLICATION SOURCE TO SOURCE_HOST='host.com'")
+
+    migration = MySQLMigration(
+        source_uri=src.to_uri(),
+        target_uri=dst.to_uri(),
+        target_master_uri=dst.to_uri(),
+        dump_tool=MySQLMigrateTool.mysqldump,
+    )
+    method = migration.run_checks(require_preserve_commit_order=True)
+    assert method == migration_method
 
 
 @mark.parametrize(
