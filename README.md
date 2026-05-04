@@ -74,6 +74,7 @@ optional arguments:
                         Save migration error to file in JSON format.
   --allow-source-without-dbs
                         Allow migrating from a source that has no migratable databases
+  --require-preserve-commit-order In order to use replication will enforce replica_preserve_commit_order is ON or replica_parallel_workers = 1. If source is not a replica this option is ignored.
 ```
 
 The following environment variables are used by migration script:

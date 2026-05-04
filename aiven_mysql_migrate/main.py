@@ -75,6 +75,13 @@ def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Op
         help="Allow migrating from a source that has no migratable databases"
     )
     parser.add_argument(
+        "--require-preserve-commit-order",
+        required=False,
+        default=False,
+        help="In order to use replication will enforce replica_preserve_commit_order is ON or replica_parallel_workers = 1. "
+             "If source is not a replica this option is ignored."
+    )
+    parser.add_argument(
         "--dump-tool",
         type=str,
         required=False,
@@ -122,6 +129,7 @@ def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Op
             force_method=parsed_args.force_method,
             dbs_max_total_size=dbs_max_total_size,
             reestablish_replication=parsed_args.reestablish_replication,
+            require_preserve_commit_order=parsed_args.require_preserve_commit_order,
         )
     except NothingToMigrateException:
         if not parsed_args.allow_source_without_dbs:

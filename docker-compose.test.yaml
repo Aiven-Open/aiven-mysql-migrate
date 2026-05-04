@@ -14,6 +14,8 @@ services:
       - mysql80-dst-2
       - mysql80-dst-3
       - mysql84-dst-4
+      - mysql84-src-preserve-commit-order-off
+      - mysql57-src-preserve-commit-order-off
     volumes:
       - .:/app:z
 
@@ -34,6 +36,27 @@ services:
       - --log-slave-updates=ON
       - --log-bin=binlog
       - --binlog-format=ROW
+      - --slave-preserve-commit-order=OFF
+      - --slave-parallel-workers=1
+
+  mysql57-src-preserve-commit-order-off:
+    image: mysql:5.7
+    platform: linux/amd64
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: test
+    command:
+      - --server-id=1
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --master-info-repository=TABLE
+      - --relay-log-info-repository=TABLE
+      - --binlog-checksum=NONE
+      - --log-slave-updates=ON
+      - --log-bin=binlog
+      - --binlog-format=ROW
+      - --slave-preserve-commit-order=OFF
+      - --slave-parallel-workers=4
 
   mysql57-src-invalid-gtid:
     image: mysql:5.7
@@ -65,6 +88,8 @@ services:
       - --log-slave-updates=ON
       - --log-bin=binlog
       - --binlog-format=ROW
+      - --replica-preserve-commit-order=OFF
+      - --replica-parallel-workers=1
 
   mysql80-src-3:
     image: mysql:8.0
@@ -110,6 +135,23 @@ services:
       - --binlog-checksum=NONE
       - --log-replica-updates=ON
       - --log-bin=binlog
+      - --replica-preserve-commit-order=OFF
+      - --replica-parallel-workers=1
+
+  mysql84-src-preserve-commit-order-off:
+    image: mysql:8.4
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: test
+    command:
+      - --server-id=1
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --binlog-checksum=NONE
+      - --log-replica-updates=ON
+      - --log-bin=binlog
+      - --replica-preserve-commit-order=OFF
+      - --replica-parallel-workers=4
 
   mysql80-dst-1:
     image: mysql:8.0
