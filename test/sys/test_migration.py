@@ -422,6 +422,54 @@ def test_database_ssl_disabled(src, dst, dump_tool, db_name):
 
 @mark.parametrize(
     "src,dst,dump_tool", [
+        (my_wait("mysql80-src-2"), my_wait("mysql84-dst-4"), "mydumper"),
+        (my_wait("mysql80-src-2"), my_wait("mysql84-dst-4"), "mysqldump"),
+    ]
+)
+def test_migration_runs_analyze_after_import(
+    src: MySQLConnectionInfo, dst: MySQLConnectionInfo, dump_tool: str, db_name: str
+) -> None:
+    with dst.cur() as cur:
+        cur.execute("STOP REPLICA FOR CHANNEL ''")
+    # Create a table with a secondary index and enough rows that InnoDB will
+    # populate non-zero stats (n_rows, index_length) once ANALYZE runs.
+    with src.cur() as cur:
+        cur.execute(f"CREATE DATABASE `{db_name}`")
+        cur.execute(f"USE `{db_name}`")
+        cur.execute("CREATE TABLE test (id INT PRIMARY KEY, payload VARCHAR(64), KEY idx_payload (payload))")
+        cur.executemany(
+            "INSERT INTO test (id, payload) VALUES (%s, %s)",
+            [(i, f"row-{i}") for i in range(1, 101)],
+        )
+        cur.execute("COMMIT")
+
+    migration = MySQLMigration(
+        source_uri=src.to_uri(),
+        target_uri=dst.to_uri(),
+        target_master_uri=dst.to_uri(),
+        privilege_check_user="root@%",
+        dump_tool=MySQLMigrateTool(dump_tool),
+    )
+    method = migration.run_checks()
+    migration.start(migration_method=method, seconds_behind_master=0)
+
+    # After analyze, persistent stats should be populated. INDEX_LENGTH is the
+    # most reliable signal because it stays 0 until stats are first computed.
+    with dst.cur() as cur:
+        cur.execute(
+            "SELECT INDEX_LENGTH FROM INFORMATION_SCHEMA.TABLES "
+            "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = 'test'",
+            (db_name,),
+        )
+        row = cur.fetchone()
+        assert row is not None
+        assert row["INDEX_LENGTH"] and row["INDEX_LENGTH"] > 0, (
+            f"INDEX_LENGTH was {row['INDEX_LENGTH']!r}; ANALYZE TABLE should have populated it"
+        )
+
+
+@mark.parametrize(
+    "src,dst,dump_tool", [
         (my_wait("mysql80-src-2"), my_wait("mysql84-dst-5"), "mydumper"),
         (my_wait("mysql84-src-5"), my_wait("mysql84-dst-5"), "mydumper"),
     ]

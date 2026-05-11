@@ -14,5 +14,10 @@ RUN apt-get install -y ./mydumper_1.0.0-1.bookworm_amd64.deb
 COPY . /app
 WORKDIR /app
 
+# Worktrees and CI checkouts may not contain full git history that setuptools-scm
+# needs to derive a version. Provide a fallback so the editable install succeeds.
+ARG SETUPTOOLS_SCM_PRETEND_VERSION_FOR_AIVEN_MYSQL_MIGRATE=0.0.0+docker
+ENV SETUPTOOLS_SCM_PRETEND_VERSION_FOR_AIVEN_MYSQL_MIGRATE=$SETUPTOOLS_SCM_PRETEND_VERSION_FOR_AIVEN_MYSQL_MIGRATE
+
 RUN pip install --upgrade pip
 RUN pip install -e ".[dev]"
