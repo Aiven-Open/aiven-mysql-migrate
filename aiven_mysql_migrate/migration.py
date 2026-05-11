@@ -334,6 +334,31 @@ class MySQLMigration:
 
         return self.dump_tool.execute_migration(migration_method)
 
+    def _analyze_tables(self) -> None:
+        LOGGER.info("Running ANALYZE TABLE on the target to refresh statistics")
+        if not self.databases:
+            return
+
+        with self.target.cur() as cur:
+            cur.execute(
+                "SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES "
+                f"WHERE TABLE_SCHEMA IN ({', '.join(['%s'] * len(self.databases))}) "
+                "AND TABLE_TYPE = 'BASE TABLE' AND UPPER(ENGINE) = 'INNODB'",
+                tuple(self.databases),
+            )
+            tables = [(row["TABLE_SCHEMA"], row["TABLE_NAME"]) for row in cur.fetchall()]
+
+        total = len(tables)
+        for idx, (schema, table) in enumerate(tables, start=1):
+            qualified = f"`{schema.replace('`', '``')}`.`{table.replace('`', '``')}`"
+            LOGGER.info("Analyzing table %d/%d: %s", idx, total, qualified)
+            try:
+                with self.target.cur() as cur:
+                    cur.execute(f"ANALYZE NO_WRITE_TO_BINLOG TABLE {qualified}")
+                    cur.fetchall()
+            except pymysql.Error as e:
+                LOGGER.warning("ANALYZE TABLE failed for %s: %s", qualified, e)
+
     def _set_gtid(self, gtid: str):
         LOGGER.info("GTID from the dump is `%s`", gtid)
         assert self.target_master is not None
@@ -445,13 +470,15 @@ class MySQLMigration:
         seconds_behind_master: int,
         stop_replication: bool = False,
         reestablish_replication: bool = False,
+        skip_analyze_after_import: bool = False,
     ) -> None:
         try:
             self.start_migration(
                 migration_method=migration_method,
                 seconds_behind_master=seconds_behind_master,
                 stop_replication=stop_replication,
-                reestablish_replication=reestablish_replication
+                reestablish_replication=reestablish_replication,
+                skip_analyze_after_import=skip_analyze_after_import,
             )
         except Exception as e:
             if self.output_error_file is not None:
@@ -469,6 +496,7 @@ class MySQLMigration:
         seconds_behind_master: int,
         stop_replication: bool = False,
         reestablish_replication: bool = False,
+        skip_analyze_after_import: bool = False,
     ) -> None:
         LOGGER.info("Start migration of the following databases:")
         for db in self.databases:
@@ -489,6 +517,9 @@ class MySQLMigration:
             with self.output_meta_file.open("w") as meta_file:
                 meta_file.write(json.dumps({"dump_gtids": gtid if gtid else ""}))
                 meta_file.close()
+
+        if not reestablish_replication and not skip_analyze_after_import:
+            self._analyze_tables()
 
         if migration_method == MySQLMigrateMethod.replication:
             LOGGER.info("Setting up replication to the target DB")

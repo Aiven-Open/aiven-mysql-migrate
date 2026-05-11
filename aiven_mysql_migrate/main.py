@@ -101,6 +101,13 @@ def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Op
         default=None,
         help="Directory path for temporary files (MyDumper only)."
     )
+    parser.add_argument(
+        "--skip-analyze-after-import",
+        action="store_true",
+        help="Skip running ANALYZE TABLE on the target after import. By default, the tool runs "
+             "ANALYZE NO_WRITE_TO_BINLOG TABLE on every migrated InnoDB table to refresh "
+             "persistent statistics.",
+    )
     parsed_args = parser.parse_args(args)
     setup_logging(debug=parsed_args.debug)
 
@@ -161,6 +168,7 @@ def main(args: Sequence[str] | None = None, *, app: str = "mysql_migrate") -> Op
         seconds_behind_master=parsed_args.seconds_behind_master,
         stop_replication=parsed_args.stop_replication,
         reestablish_replication=parsed_args.reestablish_replication,
+        skip_analyze_after_import=parsed_args.skip_analyze_after_import,
     )
 
     LOGGER.info("Migration finished.")
