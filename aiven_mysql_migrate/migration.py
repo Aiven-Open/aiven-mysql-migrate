@@ -224,8 +224,8 @@ class MySQLMigration:
                 LOGGER.info("Skipping preserve commit order: source is not replica")
                 return
             # https://dev.mysql.com/doc/mysql-replication-excerpt/8.0/en/replication-options-replica.html#sysvar_replica_parallel_workers
-            # When replica_parallel_workers is equal to 1, replica_preserve_commit_order has no effect and is ignored.
-            if select_global_var(cur, f"{replica_slave}_parallel_workers") == 1:
+            # When replica_parallel_workers is equal to 0 or 1, replica_preserve_commit_order has no effect and is ignored.
+            if select_global_var(cur, f"{replica_slave}_parallel_workers") <= 1:
                 LOGGER.info("Skipping preserve commit order: %s_parallel_workers=1", replica_slave)
                 return
 
