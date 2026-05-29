@@ -1,6 +1,8 @@
 # Copyright (c) 2020 Aiven, Helsinki, Finland. https://aiven.io/
 import datetime
 
+from pymysql.constants.CR import CR_SSL_CONNECTION_ERROR
+
 from aiven_mysql_migrate import config
 from aiven_mysql_migrate.dump_tools import MySQLMigrationToolBase, get_dump_tool
 from aiven_mysql_migrate.enums import MySQLMigrateTool, MySQLMigrateMethod
@@ -181,7 +183,7 @@ class MySQLMigration:
                 with conn_info.cur():
                     pass
             except pymysql.Error as e:
-                if e.args[0] == HANDSHAKE_ERROR:
+                if e.args[0] in [HANDSHAKE_ERROR, CR_SSL_CONNECTION_ERROR]:
                     raise SSLNotSupportedException(f"SSL is required, but not supported by the {conn_info.name}") from e
                 raise EndpointConnectionException(f"Connection to {conn_info.name} failed: {e}") from e
 
