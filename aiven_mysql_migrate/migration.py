@@ -215,7 +215,7 @@ class MySQLMigration:
                 raise UnsupportedBinLogFormatException(f"Unsupported binary log format: {row_format}, only ROW is supported")
 
     def _check_preserve_commit_order_on(self):
-        replica_slave = "slave" if LooseVersion(self.source.version) < LooseVersion("8.0") else "replica"
+        replica_slave = "slave" if LooseVersion(self.source.version) < LooseVersion("8.0.22") else "replica"
 
         with self.source.cur() as cur:
             cur.execute(f"SHOW {replica_slave.upper()} STATUS")
