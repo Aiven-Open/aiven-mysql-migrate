@@ -286,5 +286,6 @@ class MySQLDumpProcessor(DumpProcessor):
 
 
 def select_global_var(cur, var_name: str):
-    cur.execute(f"SELECT @@GLOBAL.{var_name} AS VAR")
-    return cur.fetchone()["VAR"]
+    cur.execute(f"SELECT @@GLOBAL.{var_name}")
+    row = cur.fetchone()
+    return next(iter(row.values()))
