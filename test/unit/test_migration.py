@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Aiven, Helsinki, Finland. https://aiven.io/
-from aiven_mysql_migrate.enums import MySQLMigrateMethod
+from aiven_mysql_migrate.enums import MySQLMigrateMethod, MySQLMigrateTool
+from aiven_mysql_migrate.exceptions import NoFlushTableWithReadLockException
 from aiven_mysql_migrate.migration import MySQLMigration
 from aiven_mysql_migrate.utils import MySQLConnectionInfo
 from contextlib import contextmanager
@@ -107,6 +108,29 @@ def test_analyze_tables_no_databases_short_circuits():
     migration._analyze_tables()  # pylint: disable=protected-access
 
     cursor.execute.assert_not_called()
+
+
+def test_can_flush_table_with_read_lock_raises_for_mysqldump_on_rds():
+    cursor = MagicMock()
+    # The source reports that mysql.rds_configuration exists, i.e. it is an RDS instance.
+    cursor.fetchone.return_value = {"count": 1}
+
+    migration = MySQLMigration.__new__(MySQLMigration)
+    migration.dump_tool_name = MySQLMigrateTool.mysqldump
+
+    source = MagicMock(spec=MySQLConnectionInfo)
+
+    @contextmanager
+    def _cur(**_kwargs):
+        yield cursor
+
+    source.cur.side_effect = _cur
+    migration.source = source
+
+    with pytest.raises(NoFlushTableWithReadLockException, match="use mydumper instead"):
+        migration._can_flush_table_with_read_lock()  # pylint: disable=protected-access
+
+    assert "rds_configuration" in cursor.execute.call_args.args[0]
 
 
 @pytest.mark.parametrize("skip_flag", [True, False])

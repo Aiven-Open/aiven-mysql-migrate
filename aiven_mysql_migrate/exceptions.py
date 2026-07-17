@@ -31,6 +31,10 @@ class ReplicationNotAvailableException(Exception):
     pass
 
 
+class NoFlushTableWithReadLockException(ReplicationNotAvailableException):
+    pass
+
+
 class UnsupportedMySQLVersionException(ReplicationNotAvailableException):
     pass
 

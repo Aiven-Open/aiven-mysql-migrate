@@ -3,6 +3,7 @@ import textwrap
 from abc import ABC, abstractmethod
 
 from aiven_mysql_migrate.enums import MySQLMigrateTool, MySQLMigrateMethod
+from aiven_mysql_migrate.exceptions import NoFlushTableWithReadLockException
 from aiven_mysql_migrate.migration_executor import ProcessExecutor
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, MySQLDumpProcessor, MydumperDumpProcessor, DumpProcessor
 from pathlib import Path
@@ -25,6 +26,7 @@ class MySQLMigrationToolBase(ABC):
         databases: List[str],
         skip_column_stats: bool,
         *,
+        flush_table_with_read_lock_support: bool,
         dump_tool_name: MySQLMigrateTool = MySQLMigrateTool.mysqldump,
     ):
         self.source = source
@@ -33,6 +35,7 @@ class MySQLMigrationToolBase(ABC):
         self.skip_column_stats = skip_column_stats
         self.dump_tool_name = dump_tool_name
         self.process_executor = ProcessExecutor()
+        self.flush_table_with_read_lock_support = flush_table_with_read_lock_support
         self._gtid: Optional[str] = None
 
     @abstractmethod
@@ -105,6 +108,9 @@ class MySQLDumpTool(MySQLMigrationToolBase):
             "--events",
         ]
         if migration_method == MySQLMigrateMethod.replication:
+            if not self.flush_table_with_read_lock_support:
+                raise NoFlushTableWithReadLockException("The database doesn't support 'FLUSH TABLES WITH READ LOCK', "
+                                                        "replication is not supported with mysqldump use mydumper instead")
             cmd += ["--set-gtid-purged=ON"]
         else:
             cmd += ["--set-gtid-purged=OFF"]
@@ -144,8 +150,14 @@ class MyDumperTool(MySQLMigrationToolBase):
         *,
         dump_tool_name: MySQLMigrateTool = MySQLMigrateTool.mydumper,
         temp_dir: Optional[Path] = None,
+        flush_table_with_read_lock_support: bool,
     ):
-        super().__init__(source, target, databases, skip_column_stats, dump_tool_name=dump_tool_name)
+        super().__init__(source,
+                         target,
+                         databases,
+                         skip_column_stats,
+                         dump_tool_name=dump_tool_name,
+                         flush_table_with_read_lock_support=flush_table_with_read_lock_support)
         self._base_temp_dir: Optional[Path] = temp_dir
         self.temp_dir_path: Optional[Path] = None
         self._temp_dir_obj: Optional[tempfile.TemporaryDirectory] = None
@@ -226,7 +238,7 @@ class MyDumperTool(MySQLMigrationToolBase):
             "--events",
             "--routines",
             "--chunk-filesize=1024",
-            "--sync-thread-lock-mode=AUTO",
+            f"--sync-thread-lock-mode={'AUTO' if self.flush_table_with_read_lock_support else 'LOCK_ALL'}",
             "--no-backup-locks",
             "--skip-ddl-locks",
             "--checksum-all",
@@ -290,11 +302,23 @@ def get_dump_tool(
     skip_column_stats: bool,
     *,
     temp_dir: Optional[Path] = None,
+    flush_table_with_read_lock_support,
 ) -> MySQLMigrationToolBase:
     """Factory function to create dump tool instances."""
     if tool_name == MySQLMigrateTool.mysqldump:
-        return MySQLDumpTool(source, target, databases, skip_column_stats, dump_tool_name=tool_name)
+        return MySQLDumpTool(source,
+                             target,
+                             databases,
+                             skip_column_stats,
+                             dump_tool_name=tool_name,
+                             flush_table_with_read_lock_support=flush_table_with_read_lock_support)
     elif tool_name == MySQLMigrateTool.mydumper:
-        return MyDumperTool(source, target, databases, skip_column_stats, dump_tool_name=tool_name, temp_dir=temp_dir)
+        return MyDumperTool(source,
+                            target,
+                            databases,
+                            skip_column_stats,
+                            dump_tool_name=tool_name,
+                            temp_dir=temp_dir,
+                            flush_table_with_read_lock_support=flush_table_with_read_lock_support)
     else:
         raise NotImplementedError(f"Unknown dump tool: {tool_name}")
