@@ -1,5 +1,8 @@
 # Copyright (c) 2025 Aiven, Helsinki, Finland. https://aiven.io/
+import pytest
+
 from aiven_mysql_migrate.dump_tools import (MySQLMigrationToolBase, MySQLDumpTool, MyDumperTool, get_dump_tool)
+from aiven_mysql_migrate.exceptions import NoFlushTableWithReadLockException
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, MydumperDumpProcessor
 from aiven_mysql_migrate.enums import MySQLMigrateMethod, MySQLMigrateTool
 from dataclasses import dataclass
@@ -34,6 +37,7 @@ class CommandTestCase:
     skip_column_stats: bool
     expected_dump_command: List[str]
     expected_import_command: List[str]
+    flush_table_with_read_lock_support: bool = True
 
     def __str__(self):
         return self.name
@@ -116,7 +120,7 @@ def _build_mysql_cmd(ssl=True):
     return cmd
 
 
-def _build_mydumper_cmd(databases, ssl=True):
+def _build_mydumper_cmd(databases, ssl=True, flush_table_with_read_lock_support=True):
     """Build complete mydumper command with placeholder paths."""
     cmd = [
         "mydumper",
@@ -134,7 +138,7 @@ def _build_mydumper_cmd(databases, ssl=True):
         "--events",
         "--routines",
         "--chunk-filesize=1024",
-        "--sync-thread-lock-mode=AUTO",
+        f"--sync-thread-lock-mode={'AUTO' if flush_table_with_read_lock_support else 'LOCK_ALL'}",
         "--no-backup-locks",
         "--skip-ddl-locks",
         "--checksum-all",
@@ -215,6 +219,18 @@ MYSQLDUMP_COMMAND_TEST_CASES = [
         expected_import_command=_build_mysql_cmd(ssl=True),
     ),
     CommandTestCase(
+        name="mysqldump_replication_no_ftwrl",
+        tool_name=MySQLMigrateTool.mysqldump,
+        method=MySQLMigrateMethod.replication,
+        source_config=_SSL_CONFIG,
+        target_config=_SSL_CONFIG,
+        databases=["testdb1", "testdb2"],
+        skip_column_stats=False,
+        expected_dump_command=_build_mysqldump_cmd(["testdb1", "testdb2"], gtid_mode="ON", ssl=True),
+        expected_import_command=_build_mysql_cmd(ssl=True),
+        flush_table_with_read_lock_support=False,
+    ),
+    CommandTestCase(
         name="mysqldump_dump_method_no_ssl",
         tool_name=MySQLMigrateTool.mysqldump,
         method=MySQLMigrateMethod.dump,
@@ -251,6 +267,20 @@ MYDUMPER_COMMAND_TEST_CASES = [
         expected_import_command=_build_myloader_cmd(),
     ),
     CommandTestCase(
+        name="mydumper_replication_no_ftwrl",
+        tool_name=MySQLMigrateTool.mydumper,
+        method=MySQLMigrateMethod.replication,
+        source_config=_SSL_CONFIG,
+        target_config=_SSL_CONFIG,
+        databases=["testdb1", "testdb2"],
+        skip_column_stats=False,
+        expected_dump_command=_build_mydumper_cmd(["testdb1", "testdb2"],
+                                                  ssl=True,
+                                                  flush_table_with_read_lock_support=False),
+        expected_import_command=_build_myloader_cmd(),
+        flush_table_with_read_lock_support=False
+    ),
+    CommandTestCase(
         name="mydumper_dump_method_no_ssl",
         tool_name=MySQLMigrateTool.mydumper,
         method=MySQLMigrateMethod.dump,
@@ -272,7 +302,12 @@ class TestGetDumpTool:
         """Test factory returns correct tool type based on tool name."""
         databases = ["testdb"]
 
-        tool = get_dump_tool(test_case.tool_name, source_connection, target_connection, databases, skip_column_stats=False)
+        tool = get_dump_tool(test_case.tool_name,
+                             source_connection,
+                             target_connection,
+                             databases,
+                             skip_column_stats=False,
+                             flush_table_with_read_lock_support=True)
 
         assert isinstance(tool, test_case.expected_class)
         assert tool.source == source_connection
@@ -285,7 +320,12 @@ class TestGetDumpTool:
         databases = ["testdb"]
 
         with raises(NotImplementedError, match="Unknown dump tool: unknown_tool"):
-            get_dump_tool("unknown_tool", source_connection, target_connection, databases, skip_column_stats=False)
+            get_dump_tool("unknown_tool",
+                          source_connection,
+                          target_connection,
+                          databases,
+                          skip_column_stats=False,
+                          flush_table_with_read_lock_support=True)
 
 
 class TestMySQLDumpTool:
@@ -297,13 +337,21 @@ class TestMySQLDumpTool:
         source = MySQLConnectionInfo(**test_case.source_config)
         target = MySQLConnectionInfo(**test_case.target_config)
 
-        tool = MySQLDumpTool(source, target, test_case.databases, skip_column_stats=test_case.skip_column_stats)
+        tool = MySQLDumpTool(source,
+                             target,
+                             test_case.databases,
+                             skip_column_stats=test_case.skip_column_stats,
+                             flush_table_with_read_lock_support=test_case.flush_table_with_read_lock_support)
 
-        actual_dump_cmd = tool.get_dump_command(test_case.method)
-        assert actual_dump_cmd == test_case.expected_dump_command
+        if not test_case.flush_table_with_read_lock_support and test_case.method == MySQLMigrateMethod.replication:
+            with pytest.raises(NoFlushTableWithReadLockException, match="use mydumper instead"):
+                tool.get_dump_command(test_case.method)
+        else:
+            actual_dump_cmd = tool.get_dump_command(test_case.method)
+            assert actual_dump_cmd == test_case.expected_dump_command
 
-        actual_import_cmd = tool.get_import_command(test_case.method)
-        assert actual_import_cmd == test_case.expected_import_command
+            actual_import_cmd = tool.get_import_command(test_case.method)
+            assert actual_import_cmd == test_case.expected_import_command
 
 
 class TestMyDumperTool:
@@ -315,7 +363,11 @@ class TestMyDumperTool:
         source = MySQLConnectionInfo(**test_case.source_config)
         target = MySQLConnectionInfo(**test_case.target_config)
 
-        tool = MyDumperTool(source, target, test_case.databases, skip_column_stats=test_case.skip_column_stats)
+        tool = MyDumperTool(source,
+                            target,
+                            test_case.databases,
+                            skip_column_stats=test_case.skip_column_stats,
+                            flush_table_with_read_lock_support=test_case.flush_table_with_read_lock_support)
         tool.setup()
 
         try:
@@ -340,7 +392,11 @@ class TestMyDumperTool:
     ):
         """Test temporary file creation, permissions, and content."""
         source = _create_connection("source", ssl=ssl_enabled)
-        tool = MyDumperTool(source, target_connection, databases_fixture, skip_column_stats=False)
+        tool = MyDumperTool(source,
+                            target_connection,
+                            databases_fixture,
+                            skip_column_stats=False,
+                            flush_table_with_read_lock_support=True)
         tool.setup()
 
         # Verify temp files exist
@@ -383,7 +439,11 @@ class TestMyDumperTool:
 
     def test_cleanup(self, source_connection, target_connection, databases_fixture):
         """Test cleanup removes temporary files."""
-        tool = MyDumperTool(source_connection, target_connection, databases_fixture, skip_column_stats=False)
+        tool = MyDumperTool(source_connection,
+                            target_connection,
+                            databases_fixture,
+                            skip_column_stats=False,
+                            flush_table_with_read_lock_support=True)
         tool.setup()
 
         temp_dir_path = tool.temp_dir_path
@@ -431,12 +491,20 @@ class TestMyDumperTool:
 
     def test_get_gtid_returns_none_initially(self, source_connection, target_connection, databases_fixture):
         """Test get_gtid returns None before migration."""
-        tool = MyDumperTool(source_connection, target_connection, databases_fixture, skip_column_stats=False)
+        tool = MyDumperTool(source_connection,
+                            target_connection,
+                            databases_fixture,
+                            skip_column_stats=False,
+                            flush_table_with_read_lock_support=True)
         assert tool.get_gtid() is None
 
     def test_get_gtid_after_execution(self, source_connection, target_connection, databases_fixture):
         """Test get_gtid returns GTID after successful execution."""
-        tool = MyDumperTool(source_connection, target_connection, databases_fixture, skip_column_stats=False)
+        tool = MyDumperTool(source_connection,
+                            target_connection,
+                            databases_fixture,
+                            skip_column_stats=False,
+                            flush_table_with_read_lock_support=True)
         tool._gtid = _GTIDSET  # pylint: disable=protected-access
         assert tool.get_gtid() == _GTIDSET
 
@@ -451,5 +519,9 @@ class TestMySQLMigrationToolBase:
         # This should raise TypeError because MySQLMigrationToolBase is abstract
         with raises(TypeError, match="Can't instantiate abstract class"):
             MySQLMigrationToolBase(  # pylint: disable=abstract-class-instantiated
-                source_connection, target_connection, databases, skip_column_stats=False
+                source_connection,
+                target_connection,
+                databases,
+                skip_column_stats=False,
+                flush_table_with_read_lock_support=True
             )

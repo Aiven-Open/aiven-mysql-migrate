@@ -11,7 +11,7 @@ from aiven_mysql_migrate.exceptions import (
     MissingReplicationGrants, NothingToMigrateException, ReplicaSetupException, ReplicationNotAvailableException,
     ServerIdsOverlappingException, SSLNotSupportedException, TooManyDatabasesException,
     UnsupportedBinLogFormatException, UnsupportedMySQLEngineException, UnsupportedMySQLVersionException,
-    WrongMigrationConfigurationException
+    WrongMigrationConfigurationException, NoFlushTableWithReadLockException
 )
 from aiven_mysql_migrate.migration_error import MysqlMigrationError
 from aiven_mysql_migrate.utils import MySQLConnectionInfo, PrivilegeCheckUser, select_global_var
@@ -216,6 +216,19 @@ class MySQLMigration:
             if row_format.upper() != "ROW":
                 raise UnsupportedBinLogFormatException(f"Unsupported binary log format: {row_format}, only ROW is supported")
 
+    def _can_flush_table_with_read_lock(self) -> bool:
+        if self.dump_tool_name == MySQLMigrateTool.mysqldump and self._is_rds():
+            raise NoFlushTableWithReadLockException("The database doesn't support 'FLUSH TABLES WITH READ LOCK', "
+                                                    "replication is not supported with mysqldump use mydumper instead")
+        return True
+
+    def _is_rds(self) -> bool:
+        with self.source.cur() as cur:
+            cur.execute("SELECT count(*) AS count FROM information_schema.tables "
+                        "WHERE table_schema = 'mysql' AND table_name = 'rds_configuration'")
+            row = cur.fetchone()
+            return row["count"] == 1
+
     def _check_preserve_commit_order_on(self):
         replica_slave = "slave" if LooseVersion(self.source.version) < LooseVersion("8.0.22") else "replica"
 
@@ -299,6 +312,7 @@ class MySQLMigration:
             self._check_engine_support()
             self._check_server_id_overlapping()
             self._check_bin_log_format()
+            self._can_flush_table_with_read_lock()
             if require_preserve_commit_order:
                 LOGGER.debug("require_preserve_commit_order is enabled")
                 self._check_preserve_commit_order_on()
@@ -331,6 +345,7 @@ class MySQLMigration:
             self.target,
             self.databases,
             self.skip_column_stats,
+            flush_table_with_read_lock_support=not self._is_rds(),
             temp_dir=self.temp_dir,
         )
 
