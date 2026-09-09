@@ -83,6 +83,42 @@ def test_mysql_dump_processor_remove_definers(line_in, line_out):
 
 
 @mark.parametrize(
+    "line_in,line_out",
+    [
+        # routine and trigger blocks end the statement with a single delimiter
+        (
+            "/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION' */ ;",
+            "/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,NO_ENGINE_SUBSTITUTION' */ ;",
+        ),
+        # event blocks come after DELIMITER ;; so the statement ends with a double one
+        (
+            "/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION' */ ;;",
+            "/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,NO_ENGINE_SUBSTITUTION' */ ;;",
+        ),
+        # nothing to drop: mode order and delimiter stay intact
+        (
+            "/*!50003 SET sql_mode              = 'ANSI,STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION' */ ;;",
+            "/*!50003 SET sql_mode              = 'ANSI,STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION' */ ;;",
+        ),
+        # the executor feeds lines with their trailing newline
+        (
+            "/*!50003 SET sql_mode              = 'NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION' */ ;;\n",
+            "/*!50003 SET sql_mode              = 'NO_ENGINE_SUBSTITUTION' */ ;;\n",
+        ),
+        ("/*!50003 SET sql_mode              = 'NO_AUTO_CREATE_USER' */ ;", "/*!50003 SET sql_mode              = '' */ ;"),
+        ("/*!50003 SET sql_mode              = '' */ ;", "/*!50003 SET sql_mode              = '' */ ;"),
+        (
+            "/*!50003 SET sql_mode              = @saved_sql_mode */ ;;",
+            "/*!50003 SET sql_mode              = @saved_sql_mode */ ;;",
+        ),
+    ],
+)
+def test_mysql_dump_processor_remove_deprecated_sql_modes(line_in, line_out):
+    helper = MySQLDumpProcessor()
+    assert helper.process_line(line_in) == line_out
+
+
+@mark.parametrize(
     "uri, exception_class, ssl",
     [
         ("mysql://<user>:<pwd>@<ip>:1234/", None, True),

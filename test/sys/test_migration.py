@@ -203,6 +203,8 @@ def test_migration_fallback(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, 
         cur.execute("CREATE TABLE test (ID TEXT)")
         cur.execute("INSERT INTO test (ID) VALUES (%s)", ["test_data"])
         cur.execute("CREATE PROCEDURE test_proc (OUT body TEXT) BEGIN SELECT 'test_body'; END")
+        # mysqldump writes events after DELIMITER ;; so their sql_mode preamble ends with a double delimiter
+        cur.execute("CREATE EVENT test_event ON SCHEDULE EVERY 1 DAY DO SET @test_event_ran = 1")
         cur.execute("COMMIT")
 
     migration = MySQLMigration(
@@ -223,6 +225,10 @@ def test_migration_fallback(src: MySQLConnectionInfo, dst: MySQLConnectionInfo, 
         cur.execute(f"call `{db_name}`.`test_proc`(@body)")
         res = cur.fetchall()
         assert len(res) == 1 and res[0]["test_body"] == "test_body"
+
+        cur.execute("SELECT EVENT_NAME FROM information_schema.EVENTS WHERE EVENT_SCHEMA = %s", [db_name])
+        res = cur.fetchall()
+        assert len(res) == 1 and res[0]["EVENT_NAME"] == "test_event"
 
 
 @mark.parametrize(
