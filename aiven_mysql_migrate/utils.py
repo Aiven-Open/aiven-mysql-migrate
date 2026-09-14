@@ -32,8 +32,22 @@ LOG_BIN_RE = re.compile(r"^SET +@@SESSION.SQL_LOG_BIN *= *.*?;$")
 
 GLOBAL_GRANTS_RE = re.compile("^GRANT +(.*) +ON +\\*\\.\\* +TO.*$")
 
-DEPRECATED_SQL_MODES = {"NO_AUTO_CREATE_USER", "ERROR_FOR_DIVISION_BY_ZERONO_ENGINE_SUBSTITUTION"}
-SQL_MODE_RE = re.compile(r"(/\*!50003 SET sql_mode\s*=\s*')(.*)('\s*\*/\s;)")
+# sql_mode values removed in MySQL 8.0. A 5.7 source still writes them into the sql_mode preamble
+# of every routine, trigger and event, and the 8.x target rejects the SET with ER_WRONG_VALUE_FOR_VAR.
+DEPRECATED_SQL_MODES = {
+    "DB2",
+    "MAXDB",
+    "MSSQL",
+    "MYSQL323",
+    "MYSQL40",
+    "NO_AUTO_CREATE_USER",
+    "NO_FIELD_OPTIONS",
+    "NO_KEY_OPTIONS",
+    "NO_TABLE_OPTIONS",
+    "ORACLE",
+    "POSTGRESQL",
+}
+SQL_MODE_RE = re.compile(r"^(?P<prefix>/\*!50003 SET sql_mode\s*=\s*')(?P<modes>[^']*)")
 
 
 @dataclass
@@ -249,13 +263,13 @@ class MySQLDumpProcessor(DumpProcessor):
 
     @staticmethod
     def _remove_deprecated_sql_modes(line: str) -> str:
-        """This sql command were deprecated in MySQL 8.0, this method removed deprecated commands"""
-        if not SQL_MODE_RE.match(line):
-            return line
+        """Drop sql_mode values the target no longer accepts from the per-object sql_mode preamble"""
+        def keep_supported_modes(match: re.Match) -> str:
+            modes = (mode.strip() for mode in match["modes"].split(","))
+            return match["prefix"] + ",".join(mode for mode in modes if mode not in DEPRECATED_SQL_MODES)
 
-        sql_modes = set(map(lambda mode: mode.strip(), SQL_MODE_RE.sub(r"\2", line).split(",")))
-        filtered_sql_modes = ",".join(sql_modes - DEPRECATED_SQL_MODES)
-        return SQL_MODE_RE.sub(fr"\1{filtered_sql_modes}\3", line)
+        # Only the quoted value is matched, so the closing quote and whichever delimiter mysqldump used stay as is
+        return SQL_MODE_RE.sub(keep_supported_modes, line, count=1)
 
     def process_line(self, line: str) -> str:
         if line and not self.gtid:
