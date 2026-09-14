@@ -162,14 +162,22 @@ class MySQLMigration:
                         f"GTID mode should be enabled on the {conn_info.name}: Executed_Gtid_Set is empty"
                     )
 
+    # Each requirement is met by any one of the listed grants.
+    _REPLICATION_GRANT_REQUIREMENTS = (
+        ("REPLICATION SLAVE", {"REPLICATION SLAVE", "ALL PRIVILEGES"}),
+        # SHOW MASTER STATUS / SHOW BINARY LOG STATUS accept REPLICATION CLIENT or the deprecated SUPER
+        ("REPLICATION CLIENT (or SUPER)", {"REPLICATION CLIENT", "SUPER", "ALL PRIVILEGES"}),
+    )
+
     def _check_user_can_replicate(self):
         LOGGER.info("Checking if user has replication grants on the source")
 
-        user_can_replicate = any(
-            grant in self.source.global_grants for grant in ("REPLICATION SLAVE", "ALL PRIVILEGES", "REPLICATION CLIENT")
-        )
-        if not user_can_replicate:
-            raise MissingReplicationGrants("User does not have replication permissions")
+        grants = set(self.source.global_grants)
+        missing = [name for name, satisfied_by in self._REPLICATION_GRANT_REQUIREMENTS if grants.isdisjoint(satisfied_by)]
+        if missing:
+            raise MissingReplicationGrants(
+                f"Source user is missing global privileges required for replication: {', '.join(missing)}"
+            )
 
     def _check_connections(self):
         LOGGER.info("Checking connections to service URIs")

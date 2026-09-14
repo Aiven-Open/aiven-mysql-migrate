@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Aiven, Helsinki, Finland. https://aiven.io/
 from aiven_mysql_migrate.enums import MySQLMigrateMethod, MySQLMigrateTool
-from aiven_mysql_migrate.exceptions import NoFlushTableWithReadLockException
+from aiven_mysql_migrate.exceptions import MissingReplicationGrants, NoFlushTableWithReadLockException
 from aiven_mysql_migrate.migration import MySQLMigration
 from aiven_mysql_migrate.utils import MySQLConnectionInfo
 from contextlib import contextmanager
@@ -131,6 +131,49 @@ def test_can_flush_table_with_read_lock_raises_for_mysqldump_on_rds():
         migration._can_flush_table_with_read_lock()  # pylint: disable=protected-access
 
     assert "rds_configuration" in cursor.execute.call_args.args[0]
+
+
+def _make_migration_with_source_grants(grants):
+    migration = MySQLMigration.__new__(MySQLMigration)
+    source = MagicMock(spec=MySQLConnectionInfo)
+    source.global_grants = grants
+    migration.source = source
+    return migration
+
+
+@pytest.mark.parametrize(
+    "grants",
+    [
+        ["ALL PRIVILEGES"],
+        ["REPLICATION SLAVE", "REPLICATION CLIENT"],
+        ["REPLICATION SLAVE", "SUPER"],
+        ["SELECT", "RELOAD", "REPLICATION CLIENT", "REPLICATION SLAVE"],
+    ],
+)
+def test_check_user_can_replicate_passes(grants):
+    migration = _make_migration_with_source_grants(grants)
+
+    migration._check_user_can_replicate()  # pylint: disable=protected-access
+
+
+@pytest.mark.parametrize(
+    "grants, missing",
+    [
+        # SHOW MASTER STATUS needs REPLICATION CLIENT, which REPLICATION SLAVE does not include.
+        (["REPLICATION SLAVE"], "REPLICATION CLIENT (or SUPER)"),
+        (["REPLICATION CLIENT"], "REPLICATION SLAVE"),
+        (["SUPER"], "REPLICATION SLAVE"),
+        (["SELECT", "RELOAD"], "REPLICATION SLAVE, REPLICATION CLIENT (or SUPER)"),
+        ([], "REPLICATION SLAVE, REPLICATION CLIENT (or SUPER)"),
+    ],
+)
+def test_check_user_can_replicate_names_missing_grants(grants, missing):
+    migration = _make_migration_with_source_grants(grants)
+
+    with pytest.raises(MissingReplicationGrants) as excinfo:
+        migration._check_user_can_replicate()  # pylint: disable=protected-access
+
+    assert str(excinfo.value) == f"Source user is missing global privileges required for replication: {missing}"
 
 
 @pytest.mark.parametrize("skip_flag", [True, False])
