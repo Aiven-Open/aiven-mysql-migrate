@@ -15,8 +15,8 @@ The aim of this tool is to help migrate MySQL servers from one place to another.
   point.
 
     Pre-conditions:
-    * The source database should be in >= 5.7 and <= 8.0
-    * The target database should have at least version 8.0
+    * The source database version should be >= 5.7 and <= 8.4
+    * The target database version should be >= 8.0 and <= 8.4
     * All tables must use the InnoDB engine (See https://dev.mysql.com/doc/refman/5.6/en/converting-tables-to-innodb.html for conversion process if needed)
     * `gtid_mode` is `ON` on both the source and the target
     * Master user for replication management is specified (via `TARGET_MASTER_SERVICE_URI`)
@@ -35,7 +35,7 @@ The tool requires `mysql-client` package 8.X, which can be installed from https:
 
 ## Limitations
 * No support for multi-master cluster
-* Target DB versions: >= 8, source DB: >= 5.7.
+* Source DB versions: 5.7, 8.0 and 8.4. Target DB versions: 8.0 and 8.4.
 * InnoDB engine: if MyISAM engine is used (even partially) replication method will not work
 * System databases/tables (`information_schema.*, mysql.*, performance_schema.*, sys.*`) are excluded from migration
   (DB users need to be pre-created on a target database beforehand).
